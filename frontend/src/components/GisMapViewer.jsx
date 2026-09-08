@@ -97,12 +97,15 @@ export default function GisMapViewer({
         zoomControl={false}
         className="w-full h-full"
       >
-        {/* Dark Matter CartoDB Basemap */}
+        {/* Clean Watermark-Free Defense Dark GIS Basemap (Zero API Key Needed) */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
-          maxZoom={19}
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>, &copy; <a href="https://openstreetmap.org">OSM</a>'
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={16}
+          attribution='&copy; Esri, &copy; OpenStreetMap contributors, NTRO'
+        />
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={16}
         />
 
         {/* Camera Controller */}
