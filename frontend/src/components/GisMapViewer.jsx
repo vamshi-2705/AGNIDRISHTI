@@ -183,18 +183,37 @@ export default function GisMapViewer({
                 click: () => onSelectFire(fire)
               }}
             >
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                <div className="font-mono text-xs text-slate-100 p-1">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <span
-                      className="w-2 h-2 rounded-full inline-block"
-                      style={{ backgroundColor: fire.threat_color || '#fff' }}
-                    ></span>
-                    <span>{fire.fire_id}</span>
-                    <span className="text-amber-300">({fire.frp} MW)</span>
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.98}>
+                <div className="font-mono text-xs text-slate-100 p-1.5 min-w-[210px]">
+                  <div className="flex items-center justify-between gap-1.5 font-bold mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="w-2 h-2 rounded-full inline-block"
+                        style={{ backgroundColor: fire.threat_color || '#fff' }}
+                      ></span>
+                      <span>{fire.fire_id}</span>
+                    </div>
+                    <span className="text-amber-300 font-extrabold">{fire.frp} MW</span>
                   </div>
-                  <div className="text-[10px] text-slate-300 mt-0.5">
-                    {fire.facility_name || fire.site_hint || fire.category}
+
+                  {/* Exact Location */}
+                  <div className="text-[11px] font-sans font-semibold text-white truncate">
+                    {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector')}
+                  </div>
+
+                  {/* Formatted Coordinates */}
+                  <div className="text-[10px] text-cyan-300 font-mono mt-0.5">
+                    {fire.location?.formatted_coords || `${fire.latitude.toFixed(4)}° N, ${fire.longitude.toFixed(4)}° E`}
+                  </div>
+
+                  {/* Cause & Certainty */}
+                  <div className="text-[9px] text-slate-300 mt-1 pt-1 border-t border-slate-700/80 flex items-center justify-between">
+                    <span className="truncate max-w-[140px] text-slate-300">
+                      {fire.cause_analysis?.cause_title || fire.category}
+                    </span>
+                    <span className="text-emerald-400 font-bold">
+                      {fire.cause_analysis?.certainty_pct || 90}% AI
+                    </span>
                   </div>
                 </div>
               </Tooltip>

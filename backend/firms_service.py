@@ -9,6 +9,7 @@ import os
 import csv
 import logging
 from typing import List, Dict, Any, Optional
+import time
 import requests
 from mock_firms_data import CALIBRATED_INDIAN_FIRMS_DATA
 
@@ -29,6 +30,9 @@ class FirmsService:
         self.map_key = "f0d0495d96f08232dc7f8a564d8ba2d2"
         self.source_satellite = "VIIRS_SNPP_NRT"
         self.country_code = "IND"
+        self._cache = None
+        self._cache_time = 0.0
+        self._cache_ttl = 300.0
 
     def fetch_firms_data(self, days: int = 1) -> Dict[str, Any]:
         """
@@ -36,6 +40,10 @@ class FirmsService:
         If live API request succeeds, parses CSV to standard records.
         Otherwise, falls back seamlessly to calibrated dataset.
         """
+        now = time.time()
+        if self._cache and (now - self._cache_time < self._cache_ttl):
+            return self._cache
+
         if self.map_key:
             url = f"{self.BASE_URL}/{self.map_key}/{self.source_satellite}/68,6,97,37/{days}"
             logger.info(f"Attempting live NASA FIRMS API ingestion from: {url}")
@@ -47,18 +55,25 @@ class FirmsService:
                         # Merge critical facility benchmark alerts to guarantee emergency SOP testability
                         benchmark_emergencies = [x for x in CALIBRATED_INDIAN_FIRMS_DATA if x['fire_id'] in ['FIRMS-IND-2026-001', 'FIRMS-IND-2026-004']]
                         merged_records = benchmark_emergencies + records
-                        return {
+                        result = {
                             "status": "success",
                             "source": "NASA_FIRMS_LIVE",
                             "count": len(merged_records),
                             "data": merged_records
                         }
+                        self._cache = result
+                        self._cache_time = now
+                        logger.info(f"Cached {len(merged_records)} live NASA FIRMS records.")
+                        return result
                     else:
                         logger.warning("NASA FIRMS returned empty CSV response, switching to calibrated dataset.")
                 else:
                     logger.warning(f"NASA FIRMS API returned status {response.status_code}: {response.text[:120]}")
             except Exception as e:
                 logger.warning(f"Network error querying NASA FIRMS API ({e}). Engaging calibrated fallback.")
+
+        if self._cache:
+            return self._cache
 
         # Seamless Calibrated Fallback
         logger.info("Serving high-fidelity calibrated Indian thermal dataset.")

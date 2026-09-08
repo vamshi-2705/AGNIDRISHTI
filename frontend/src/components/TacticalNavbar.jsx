@@ -56,7 +56,7 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount }
           {isLive ? (
             <>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="text-emerald-400 font-semibold">FASTAPI LIVE</span>
+              <span className="text-emerald-400 font-semibold">NASA VIIRS LIVE</span>
             </>
           ) : (
             <>

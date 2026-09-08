@@ -49,8 +49,13 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // 2. Refetch fires when filterMode changes
+  // 2. Refetch fires when filterMode changes (skip on initial mount to avoid duplicate fetch)
+  const isInitialMount = React.useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     let isMounted = true;
     async function updateFires() {
       setLoading(true);

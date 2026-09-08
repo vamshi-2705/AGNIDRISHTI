@@ -7,7 +7,7 @@
 import { FALLBACK_SUMMARY, FALLBACK_FIRES, FALLBACK_FACILITIES } from './fallbackData';
 
 const BASE_URL = 'http://127.0.0.1:8000';
-const TIMEOUT_MS = 3000;
+const TIMEOUT_MS = 25000;
 
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();

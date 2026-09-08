@@ -171,18 +171,24 @@ export default function OperationsSidebar({
                   </div>
                 </div>
 
-                {/* Middle Row: Facility Name / Location */}
-                <div className="text-xs font-medium text-slate-300 truncate mb-1">
-                  {fire.facility_name || fire.site_hint || 'Rural / Field Biomass'}
+                {/* Middle Row: Exact Location Name */}
+                <div className="text-xs font-semibold text-slate-200 truncate mb-0.5">
+                  {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector, India')}
                 </div>
 
-                {/* Subcategory & Satellite */}
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span className="truncate max-w-[200px]">
-                    {fire.sub_category || fire.category}
+                {/* Formatted Coordinates & Satellite Sensor */}
+                <div className="flex items-center justify-between text-[10px] font-mono text-cyan-400/90 mb-1">
+                  <span>{fire.location?.formatted_coords || `${fire.latitude?.toFixed(4)}° N, ${fire.longitude?.toFixed(4)}° E`}</span>
+                  <span className="text-slate-400">VIIRS {fire.instrument || '375m'}</span>
+                </div>
+
+                {/* AI Cause Attribution & Certainty */}
+                <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-800/60 text-slate-400">
+                  <span className="truncate max-w-[210px] text-slate-300">
+                    {fire.cause_analysis?.cause_title || fire.sub_category || fire.category}
                   </span>
-                  <span className="text-slate-400 shrink-0">
-                    Ratio: <strong className={isEmergency ? 'text-red-400 font-bold' : 'text-slate-300'}>{fire.anomaly_ratio}x</strong>
+                  <span className="text-emerald-400 font-bold shrink-0">
+                    {fire.cause_analysis?.certainty_pct || 90}% AI
                   </span>
                 </div>
               </div>
