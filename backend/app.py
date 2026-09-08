@@ -20,7 +20,7 @@ from geocoding_service import reverse_geocode_live
 from plume_service import calculate_plume_cone, fetch_live_wind
 
 app = FastAPI(
-    title="ASTRAFIRE - Geospatial AI Industrial Fire Surveillance Engine",
+    title="AGNIDRISHTI - Geospatial AI Industrial Fire Surveillance Engine",
     description=(
         "Production-grade GIS backend for NTRO SIH 2026 Problem Statement 26162. "
         "Delivers automated multi-spectral satellite thermal anomaly ingestion (NASA FIRMS VIIRS), "
@@ -52,7 +52,7 @@ def get_root_status() -> Dict[str, Any]:
     Root health check and comprehensive API manifest for judges and clients.
     """
     return {
-        "system": "ASTRAFIRE Backend Engine",
+        "system": "AGNIDRISHTI Backend Engine",
         "status": "OPERATIONAL",
         "sih_problem_id": "SIH26162",
         "ministry_organization": "National Technical Research Organisation (NTRO)",

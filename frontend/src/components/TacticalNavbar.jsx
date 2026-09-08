@@ -40,7 +40,7 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount }
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-extrabold tracking-wider bg-gradient-to-r from-slate-100 via-cyan-200 to-sky-400 bg-clip-text text-transparent font-mono">
-              ASTRAFIRE
+              AGNIDRISHTI
             </h1>
             <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-400 border border-sky-700/50">
               SIH-26162
