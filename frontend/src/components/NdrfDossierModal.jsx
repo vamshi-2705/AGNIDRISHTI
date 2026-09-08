@@ -164,7 +164,7 @@ export default function NdrfDossierModal({ report, onClose }) {
                 {tactics.standard_operating_procedure || 'Dispatch foam deluge tenders and sound Level-1 evacuation sirens.'}
               </p>
               <ul className="space-y-1.5 pl-2 list-disc list-inside text-slate-400">
-                <li>Establish Incident Command Post at upwind coordinates ($> 3\,\text{km}$ southwest of origin).</li>
+                <li>Establish Incident Command Post at upwind coordinates (&gt; 3 km southwest of origin).</li>
                 <li>Mobilize foam fire trucks and seal off downwind transport corridors.</li>
                 <li>Coordinate with State Pollution Control Board for continuous ambient hydrocarbon gas sampling.</li>
               </ul>

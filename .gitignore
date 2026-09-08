@@ -48,3 +48,10 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Node.js & Frontend build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+
