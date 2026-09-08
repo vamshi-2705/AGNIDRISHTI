@@ -8,7 +8,7 @@ echo              SIH 2026 Problem Statement 26162 (NTRO)
 echo =====================================================================
 echo.
 
-cd frontend
+cd /d "%~dp0frontend"
 
 :: Check if node_modules exists
 if not exist "node_modules\" (

@@ -1,3 +1,3 @@
 @echo off
-cd backend
+cd /d "%~dp0backend"
 call run_backend.bat

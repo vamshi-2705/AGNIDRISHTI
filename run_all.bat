@@ -7,6 +7,8 @@ echo           ASTRAFIRE: Unified Tactical Stack Launcher
 echo               SIH 2026 Problem Statement 26162
 echo =====================================================================
 echo.
+cd /d "%~dp0"
+
 echo [1/2] Launching Python FastAPI Backend Server on http://127.0.0.1:8000 ...
 start "ASTRAFIRE Backend (FastAPI)" cmd /c run_backend.bat
 
