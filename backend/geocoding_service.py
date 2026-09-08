@@ -4,7 +4,56 @@ Determines exact District, State, Landmark, and Geo-region for any coordinate in
 without external rate limits or network lag.
 """
 
+import os
+import requests
+import logging
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger("astrafire.geocoding")
+
+_NOMINATIM_CACHE: Dict[str, Dict[str, Any]] = {}
+
+def reverse_geocode_live(lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Live Reverse-Geocoding via OpenStreetMap Nominatim API.
+    Resolves real-time district, taluka, state, and geographic address.
+    Utilizes coordinate caching to respect OSM usage policies and guarantee sub-millisecond response.
+    Falls back seamlessly to local Indian spatial bounding index if offline or rate-limited.
+    """
+    cache_key = f"{round(lat, 3)},{round(lon, 3)}"
+    if cache_key in _NOMINATIM_CACHE:
+        return _NOMINATIM_CACHE[cache_key]
+
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?lat={round(lat, 4)}&lon={round(lon, 4)}&format=json&zoom=10"
+        headers = {"User-Agent": "Agnidrishti-SIH26162-Surveillance/1.0 (contact: student@sih.gov.in)"}
+        resp = requests.get(url, headers=headers, timeout=2.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            addr = data.get("address", {})
+            district = addr.get("county") or addr.get("state_district") or addr.get("city") or addr.get("district")
+            state = addr.get("state")
+            display_name = data.get("display_name", "")
+            if state:
+                result = {
+                    "district": district or "Sub-District Sector",
+                    "state": state,
+                    "region": f"{district or state} Administrative Sector",
+                    "display_name": display_name,
+                    "formatted_coords": f"{lat:.4f}° N, {lon:.4f}° E",
+                    "source": "OSM_NOMINATIM_LIVE"
+                }
+                _NOMINATIM_CACHE[cache_key] = result
+                return result
+    except Exception as e:
+        logger.debug(f"Nominatim lookup timed out ({e}), using local spatial index.")
+
+    # High-speed local spatial index fallback
+    fallback = get_location_profile(lat, lon)
+    fallback["source"] = "INDIAN_SPATIAL_INDEX"
+    _NOMINATIM_CACHE[cache_key] = fallback
+    return fallback
+
 
 # Indian State & Union Territory Bounding Boxes and Regional Profiles
 INDIAN_REGIONS = [

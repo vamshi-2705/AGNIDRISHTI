@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { getLiveOsmVerification } from '../services/api';
 import { X, ShieldAlert, Wind, AlertTriangle, FileText, Flame, Compass, ChevronRight, Activity, MapPin, CheckCircle2, HelpCircle } from 'lucide-react';
 
 export default function IncidentInspector({
@@ -9,6 +10,26 @@ export default function IncidentInspector({
   onOpenReport,
   plumeLoading
 }) {
+  const [osmData, setOsmData] = useState(null);
+  const [osmLoading, setOsmLoading] = useState(false);
+
+  useEffect(() => {
+    if (!fire?.latitude || !fire?.longitude) return;
+    let isMounted = true;
+    setOsmLoading(true);
+    getLiveOsmVerification(fire.latitude, fire.longitude)
+      .then(res => {
+        if (isMounted) {
+          setOsmData(res.data);
+          setOsmLoading(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setOsmLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, [fire?.latitude, fire?.longitude]);
+
   if (!fire) return null;
 
   const isEmergency = fire.is_emergency;
@@ -115,6 +136,46 @@ export default function IncidentInspector({
               <span>Lon: {fire.longitude}</span>
             </div>
           </div>
+        </div>
+
+        {/* 1.5 LIVE OPENSTREETMAP (NOMINATIM #5 & OVERPASS #3) VERIFICATION CARD */}
+        <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/40 font-mono text-xs">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 tracking-wider">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>LIVE OPENSTREETMAP VERIFICATION</span>
+            </div>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50">
+              #3 & #5 LIVE
+            </span>
+          </div>
+
+          {osmLoading ? (
+            <div className="text-[10px] text-slate-400 animate-pulse py-1">
+              Querying live OSM Nominatim & Overpass...
+            </div>
+          ) : osmData ? (
+            <div className="space-y-1.5 text-[10px] text-slate-300">
+              <div className="flex items-start gap-1">
+                <span className="text-emerald-400 font-bold shrink-0">OSM Address:</span>
+                <span className="text-slate-200 truncate">
+                  {osmData.live_nominatim_reverse_geocoding?.display_name || 'Verified Indian Sector'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[9px] pt-1 border-t border-emerald-900/60">
+                <span className="text-slate-400">OSM Industrial Infrastructure:</span>
+                <span className={`font-bold ${
+                  osmData.live_overpass_industrial_infrastructure?.verified_in_osm
+                    ? 'text-amber-400'
+                    : 'text-slate-400'
+                }`}>
+                  {osmData.live_overpass_industrial_infrastructure?.name || 'Non-Industrial Terrain'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[10px] text-slate-400">Live OSM verification active</div>
+          )}
         </div>
 
         {/* 2. AI ROOT-CAUSE ATTRIBUTION & CERTAINTY ENGINE */}

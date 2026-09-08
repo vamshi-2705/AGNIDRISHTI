@@ -169,3 +169,26 @@ export async function getIncidentReport(fireId) {
     };
   }
 }
+
+export async function getLiveOsmVerification(lat, lon) {
+  try {
+    const data = await fetchWithTimeout(`${BASE_URL}/api/osm/live-verify?lat=${lat}&lon=${lon}`);
+    return { data, isLive: true };
+  } catch (err) {
+    return {
+      data: {
+        live_nominatim_reverse_geocoding: {
+          district: "Local Sub-district",
+          state: "India",
+          display_name: "OpenStreetMap Offline / Cached Profile",
+          source: "LOCAL_INDEX"
+        },
+        live_overpass_industrial_infrastructure: {
+          verified_in_osm: false,
+          message: "Live Overpass query skipped or timed out."
+        }
+      },
+      isLive: false
+    };
+  }
+}

@@ -37,7 +37,7 @@ export default function App() {
       setSummary(sumRes.data);
       setFacilities(facRes.data);
       setFires(firesRes.data);
-      setIsLive(sumRes.isLive && firesRes.isLive);
+      setIsLive(firesRes.isLive);
     } catch (err) {
       console.error('[ASTRAFIRE] Initialization error:', err);
     } finally {

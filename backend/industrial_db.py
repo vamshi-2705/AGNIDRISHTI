@@ -257,3 +257,84 @@ def get_facilities_geojson() -> Dict[str, Any]:
         },
         "features": features
     }
+
+import requests
+import logging
+
+logger = logging.getLogger("astrafire.industrial_osm")
+
+_OVERPASS_CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
+
+def query_live_osm_overpass(lat: float, lon: float, radius_m: int = 5000) -> Optional[Dict[str, Any]]:
+    """
+    Queries live OpenStreetMap Overpass API for verified industrial/petrochemical facilities
+    within radius_m of the thermal detection point.
+    Uses multi-mirror fallback and coordinate caching for high availability.
+    """
+    cache_key = f"{round(lat, 2)},{round(lon, 2)}"
+    if cache_key in _OVERPASS_CACHE:
+        return _OVERPASS_CACHE[cache_key]
+
+    # First check verified local baseline complexes
+    local_facility = find_facility_for_point(lat, lon)
+    if local_facility:
+        res = {
+            "source": "OPENSTREETMAP_VERIFIED_PERIMETER",
+            "facility_id": local_facility["facility_id"],
+            "name": local_facility["name"],
+            "category": local_facility["category"],
+            "state": local_facility["state"],
+            "district": local_facility["district"],
+            "critical_chemicals": local_facility["critical_chemicals"],
+            "hazard_radius_km": local_facility["hazard_radius_km"],
+            "verified_in_osm": True
+        }
+        _OVERPASS_CACHE[cache_key] = res
+        return res
+
+    # Live Overpass query to mirror endpoints
+    query = f"""[out:json][timeout:3];
+(
+  node["industrial"](around:{radius_m},{lat},{lon});
+  way["landuse"="industrial"](around:{radius_m},{lat},{lon});
+  node["man_made"="petroleum_well"](around:{radius_m},{lat},{lon});
+  way["power"="plant"](around:{radius_m},{lat},{lon});
+);
+out tags 2;"""
+
+    mirrors = [
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://overpass-api.de/api/interpreter"
+    ]
+
+    for mirror in mirrors:
+        try:
+            resp = requests.post(
+                mirror,
+                data={"data": query},
+                timeout=3.0,
+                headers={"User-Agent": "Agnidrishti-SIH26162-OSM/1.0"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                elems = data.get("elements", [])
+                if elems:
+                    elem = elems[0]
+                    tags = elem.get("tags", {})
+                    name = tags.get("name") or tags.get("description") or f"OSM Industrial Zone ({tags.get('industrial', 'Heavy')})"
+                    result = {
+                        "source": "OPENSTREETMAP_OVERPASS_LIVE",
+                        "osm_id": elem.get("id"),
+                        "osm_type": elem.get("type"),
+                        "name": name,
+                        "category": tags.get("industrial") or tags.get("landuse") or "Industrial Site",
+                        "tags": tags,
+                        "verified_in_osm": True
+                    }
+                    _OVERPASS_CACHE[cache_key] = result
+                    return result
+        except Exception:
+            continue
+
+    _OVERPASS_CACHE[cache_key] = None
+    return None

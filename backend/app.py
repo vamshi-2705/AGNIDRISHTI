@@ -15,8 +15,9 @@ from fastapi.responses import JSONResponse
 
 from firms_service import firms_service
 from classifier import classify_fire_list, classify_thermal_point
-from industrial_db import get_facilities_geojson, find_facility_for_point
-from plume_service import calculate_plume_cone
+from industrial_db import get_facilities_geojson, find_facility_for_point, query_live_osm_overpass
+from geocoding_service import reverse_geocode_live
+from plume_service import calculate_plume_cone, fetch_live_wind
 
 app = FastAPI(
     title="ASTRAFIRE - Geospatial AI Industrial Fire Surveillance Engine",
@@ -94,6 +95,28 @@ def get_thermal_fires(
     }
 
 
+
+@app.get("/api/osm/live-verify", tags=["GIS Infrastructure"])
+def live_osm_verification(lat: float = Query(..., description="Latitude"), lon: float = Query(..., description="Longitude")) -> Dict[str, Any]:
+    """
+    Live Real-Time OpenStreetMap Verification:
+    - Queries live OSM Nominatim for exact real-time district, taluka, and address (Dataset #5).
+    - Queries live OSM Overpass for nearby verified industrial facilities and tags (Dataset #3).
+    """
+    nominatim_data = reverse_geocode_live(lat, lon)
+    overpass_data = query_live_osm_overpass(lat, lon, radius_m=5000)
+
+    return {
+        "status": "success",
+        "coordinates": {"latitude": lat, "longitude": lon},
+        "live_nominatim_reverse_geocoding": nominatim_data,
+        "live_overpass_industrial_infrastructure": overpass_data or {
+            "verified_in_osm": False,
+            "message": "No industrial or refinery tags recorded in OSM within 5km radius."
+        },
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    }
+
 @app.get("/api/facilities", tags=["GIS Infrastructure"])
 def get_industrial_facilities() -> Dict[str, Any]:
     """
@@ -157,15 +180,20 @@ def get_plume_dispersion(fire_id: str) -> Dict[str, Any]:
     if not target_fire:
         raise HTTPException(status_code=404, detail=f"Fire incident with ID '{fire_id}' not found.")
 
+    lat = target_fire["latitude"]
+    lon = target_fire["longitude"]
+    live_wind = fetch_live_wind(lat, lon)
+
     plume_geojson = calculate_plume_cone(
-        lat=target_fire["latitude"],
-        lon=target_fire["longitude"],
+        lat=lat,
+        lon=lon,
         frp=target_fire["frp"],
-        wind_speed_kmh=target_fire.get("wind_speed_kmh", 18.0),
-        wind_direction_deg=target_fire.get("wind_direction_deg", 225.0),
+        wind_speed_kmh=live_wind["wind_speed_kmh"],
+        wind_direction_deg=live_wind["wind_direction_deg"],
         fire_id=target_fire["fire_id"],
         category=target_fire.get("category", "CRITICAL_INDUSTRIAL_EMERGENCY")
     )
+    plume_geojson["properties"]["meteorology_source"] = live_wind.get("source", "OPEN_METEO_LIVE")
 
     return plume_geojson
 

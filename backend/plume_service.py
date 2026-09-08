@@ -5,7 +5,32 @@ GeoJSON GIS Overlay for Evacuation Planning & NDRF Response
 """
 
 import math
-from typing import Dict, Any, List
+import requests
+from typing import Dict, Any, List, Optional
+
+def fetch_live_wind(lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Fetches real-time atmospheric wind velocity and direction from Open-Meteo API.
+    Provides zero-latency fallback to meteorological baseline on network timeout.
+    """
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={round(lat, 4)}&longitude={round(lon, 4)}&current=wind_speed_10m,wind_direction_10m"
+        resp = requests.get(url, timeout=2.5)
+        if resp.status_code == 200:
+            curr = resp.json().get("current", {})
+            return {
+                "wind_speed_kmh": float(curr.get("wind_speed_10m", 15.0)),
+                "wind_direction_deg": float(curr.get("wind_direction_10m", 225.0)),
+                "source": "OPEN_METEO_LIVE"
+            }
+    except Exception:
+        pass
+    return {
+        "wind_speed_kmh": 15.0,
+        "wind_direction_deg": 225.0,
+        "source": "METEOROLOGICAL_BASELINE"
+    }
+
 
 def calculate_plume_cone(
     lat: float,
