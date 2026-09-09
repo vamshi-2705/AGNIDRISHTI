@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff, Home } from 'lucide-react';
+import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff, Home, ArrowLeft } from 'lucide-react';
 
 export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, onBackToLanding }) {
   const [timeStr, setTimeStr] = useState('');
@@ -27,8 +27,20 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
 
   return (
     <header className="h-16 bg-[#080c14] border-b border-slate-800/80 px-4 flex items-center justify-between z-30 shrink-0 select-none">
-      {/* Left: Branding & Organization */}
+      {/* Left: Branding & Navigation */}
       <div className="flex items-center gap-3">
+        {/* Prominent Back to Landing Button */}
+        {onBackToLanding && (
+          <button
+            onClick={onBackToLanding}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-400 text-xs font-mono font-bold text-cyan-300 hover:text-white transition-all shadow-md cursor-pointer group shrink-0"
+            title="Return to Landing Page"
+          >
+            <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-0.5 transition-transform" />
+            <span>BACK</span>
+          </button>
+        )}
+
         <div 
           className={`flex items-center gap-3 ${onBackToLanding ? 'cursor-pointer group' : ''}`}
           onClick={onBackToLanding}

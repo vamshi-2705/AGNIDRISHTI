@@ -26,6 +26,41 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [plumeLoading, setPlumeLoading] = useState(false);
 
+  // Synchronize view with URL hash and browser history (Back/Forward button support)
+  useEffect(() => {
+    const syncViewWithHash = () => {
+      if (window.location.hash === '#platform') {
+        setCurrentView('platform');
+      } else {
+        setCurrentView('landing');
+      }
+    };
+
+    // On initial mount, respect the current hash
+    if (window.location.hash === '#platform') {
+      setCurrentView('platform');
+    }
+
+    window.addEventListener('popstate', syncViewWithHash);
+    window.addEventListener('hashchange', syncViewWithHash);
+
+    return () => {
+      window.removeEventListener('popstate', syncViewWithHash);
+      window.removeEventListener('hashchange', syncViewWithHash);
+    };
+  }, []);
+
+  const handleOpenPlatform = () => {
+    setCurrentView('platform');
+    window.location.hash = 'platform';
+  };
+
+  const handleBackToLanding = () => {
+    setCurrentView('landing');
+    window.location.hash = '';
+  };
+
+
   // 1. Initial Data Fetch
   const loadInitialData = useCallback(async () => {
     setLoading(true);
@@ -112,7 +147,7 @@ export default function App() {
   const activeEmergencies = fires.filter(f => f.is_emergency).length;
 
   if (currentView === 'landing') {
-    return <LandingPage onOpenPlatform={() => setCurrentView('platform')} />;
+    return <LandingPage onOpenPlatform={handleOpenPlatform} />;
   }
 
   return (
@@ -122,7 +157,7 @@ export default function App() {
         summary={summary}
         isLive={isLive}
         activeEmergencyCount={activeEmergencies}
-        onBackToLanding={() => setCurrentView('landing')}
+        onBackToLanding={handleBackToLanding}
       />
 
       {/* 2. Main Body (Sidebar + GIS Map) */}
