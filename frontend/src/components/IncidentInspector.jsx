@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getLiveOsmVerification } from '../services/api';
-import { X, ShieldAlert, Wind, AlertTriangle, FileText, Flame, Compass, ChevronRight, Activity, MapPin, CheckCircle2, HelpCircle } from 'lucide-react';
+import { alertSound } from '../services/alertSound';
+import { X, ShieldAlert, Volume2, VolumeX, Wind, AlertTriangle, FileText, Flame, Compass, ChevronRight, Activity, MapPin, CheckCircle2, HelpCircle } from 'lucide-react';
 
 export default function IncidentInspector({
   fire,
@@ -12,6 +13,39 @@ export default function IncidentInspector({
 }) {
   const [osmData, setOsmData] = useState(null);
   const [osmLoading, setOsmLoading] = useState(false);
+  const [isAlertSoundActive, setIsAlertSoundActive] = useState(false);
+
+  // Play alert siren automatically when an emergency incident is selected
+  useEffect(() => {
+    if (fire?.is_emergency) {
+      alertSound.startEmergencySiren();
+      setIsAlertSoundActive(true);
+    } else {
+      alertSound.stopEmergencySiren();
+      setIsAlertSoundActive(false);
+    }
+
+    return () => {
+      alertSound.stopEmergencySiren();
+      setIsAlertSoundActive(false);
+    };
+  }, [fire?.fire_id, fire?.is_emergency]);
+
+  const handleToggleAlertSound = () => {
+    if (isAlertSoundActive) {
+      alertSound.stopEmergencySiren();
+      setIsAlertSoundActive(false);
+    } else {
+      alertSound.startEmergencySiren();
+      setIsAlertSoundActive(true);
+    }
+  };
+
+  const handleCloseInspector = () => {
+    alertSound.stopEmergencySiren();
+    setIsAlertSoundActive(false);
+    if (onClose) onClose();
+  };
 
   useEffect(() => {
     if (!fire?.latitude || !fire?.longitude) return;
@@ -95,15 +129,73 @@ export default function IncidentInspector({
           </h3>
         </div>
 
-        <button
-          onClick={onClose}
-          className="p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {isEmergency && (
+            <button
+              onClick={handleToggleAlertSound}
+              className={`p-1.5 rounded-md border transition-all cursor-pointer ${
+                isAlertSoundActive 
+                  ? 'bg-red-600/90 text-white border-red-400 shadow-md shadow-red-500/30 animate-pulse' 
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+              }`}
+              title={isAlertSoundActive ? "Stop Emergency Siren" : "Start Emergency Siren"}
+            >
+              {isAlertSoundActive ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          )}
+          <button
+            onClick={handleCloseInspector}
+            className="p-1 rounded-md text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 transition-colors cursor-pointer"
+            title="Close Inspector"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="p-4 space-y-3.5 text-xs font-sans">
+        {/* 0. EMERGENCY AUDIO SIREN CONTROLLER BANNER */}
+        {isEmergency && (
+          <div className="flex items-center justify-between p-3 rounded-lg bg-red-950/70 border border-red-500/60 shadow-lg shadow-red-500/20">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+              </span>
+              <div>
+                <div className="text-[11px] font-mono font-extrabold text-red-200 tracking-wider">
+                  DEFCON 2 EMERGENCY ALERT
+                </div>
+                <div className="text-[9.5px] font-mono text-red-300/80">
+                  {isAlertSoundActive ? "🚨 Siren active • Auditory warning ringing" : "🔇 Siren muted • Visual alert active"}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleToggleAlertSound}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer shadow-md ${
+                isAlertSoundActive
+                  ? 'bg-red-600 hover:bg-red-700 text-white border border-red-400'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600'
+              }`}
+              title={isAlertSoundActive ? "Stop alert sound" : "Start alert sound"}
+            >
+              {isAlertSoundActive ? (
+                <>
+                  <VolumeX className="w-3.5 h-3.5" />
+                  <span>STOP SOUND</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-red-400" />
+                  <span>START SOUND</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* 1. EXACT LOCATION & COORDINATES SECTION */}
         <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
           <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5 font-bold">

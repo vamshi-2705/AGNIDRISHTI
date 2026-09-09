@@ -5,6 +5,7 @@ import GisMapViewer from './components/GisMapViewer';
 import IncidentInspector from './components/IncidentInspector';
 import NdrfDossierModal from './components/NdrfDossierModal';
 import LandingPage from './LandingPage';
+import { alertSound } from './services/alertSound';
 import {
   getAnalyticsSummary,
   getFires,
@@ -188,6 +189,7 @@ export default function App() {
             <IncidentInspector
               fire={selectedFire}
               onClose={() => {
+                alertSound.stopEmergencySiren();
                 setSelectedFire(null);
                 setActivePlume(null);
               }}
