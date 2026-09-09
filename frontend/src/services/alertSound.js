@@ -1,7 +1,7 @@
 /**
- * ASTRAFIRE / AGNIDRISHTI - Emergency Audio Alert Synthesizer
- * Generates realistic industrial emergency sirens and ringing alert tones
- * using the Web Audio API without requiring external audio files.
+ * AGNIDRISHTI - Soft Tactical Emergency Alert Synthesizer
+ * Generates an ambient, low-volume, smooth command-post alert chime/siren
+ * using pure sine waves via the Web Audio API.
  */
 
 class AlertSoundService {
@@ -12,7 +12,7 @@ class AlertSoundService {
     this.gainNode = null;
     this.lfo = null;
     this.isPlaying = false;
-    this.intervalId = null;
+    this.pulseTimer = null;
   }
 
   _initContext() {
@@ -26,7 +26,7 @@ class AlertSoundService {
   }
 
   /**
-   * Starts a high-urgency industrial emergency siren / ringing alert
+   * Starts a smooth, low-volume tactical alert chime / siren
    */
   startEmergencySiren() {
     if (this.isPlaying) return;
@@ -37,52 +37,59 @@ class AlertSoundService {
 
       const now = this.audioCtx.currentTime;
 
-      // Master Gain
+      // Master Gain - Low volume (0.04 peak gain: soft, pleasant, non-jarring)
       this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.setValueAtTime(0.12, now);
+      this.gainNode.gain.setValueAtTime(0.001, now);
+      this.gainNode.gain.linearRampToValueAtTime(0.038, now + 0.15);
       this.gainNode.connect(this.audioCtx.destination);
 
-      // Dual Oscillators for rich alarm timbre
+      // Primary Oscillator - Warm pure sine wave at 480 Hz
       this.oscillator1 = this.audioCtx.createOscillator();
+      this.oscillator1.type = 'sine';
+      this.oscillator1.frequency.setValueAtTime(480, now);
+
+      // Harmonic Oscillator - Soft harmonic at 720 Hz (pure 5th interval for clean command-center chime)
       this.oscillator2 = this.audioCtx.createOscillator();
-
-      this.oscillator1.type = 'sawtooth';
       this.oscillator2.type = 'sine';
+      this.oscillator2.frequency.setValueAtTime(720, now);
 
-      this.oscillator1.frequency.setValueAtTime(820, now);
-      this.oscillator2.frequency.setValueAtTime(824, now);
+      // Sub-gain for the harmonic so it stays subtle and warm
+      const harmonicGain = this.audioCtx.createGain();
+      harmonicGain.gain.setValueAtTime(0.35, now);
+      this.oscillator2.connect(harmonicGain);
+      harmonicGain.connect(this.gainNode);
 
-      // Low Frequency Oscillator (LFO) for tactical siren modulation (wailing frequency sweep)
+      // Gentle LFO frequency modulation (soft siren warble: 1.4 Hz, +/- 65 Hz)
       this.lfo = this.audioCtx.createOscillator();
       this.lfo.type = 'sine';
-      this.lfo.frequency.setValueAtTime(2.2, now); // 2.2 Hz siren sweep
+      this.lfo.frequency.setValueAtTime(1.4, now);
 
       const lfoGain = this.audioCtx.createGain();
-      lfoGain.gain.setValueAtTime(180, now); // Sweep +/- 180Hz
+      lfoGain.gain.setValueAtTime(65, now);
 
       this.lfo.connect(lfoGain);
       lfoGain.connect(this.oscillator1.frequency);
       lfoGain.connect(this.oscillator2.frequency);
 
       this.oscillator1.connect(this.gainNode);
-      this.oscillator2.connect(this.gainNode);
 
-      this.lfo.start();
-      this.oscillator1.start();
-      this.oscillator2.start();
+      this.lfo.start(now);
+      this.oscillator1.start(now);
+      this.oscillator2.start(now);
 
-      // Pulsing beeper/ringing cadence overlay
-      let pulseState = true;
-      this.intervalId = setInterval(() => {
+      // Gentle rhythmic pulsing envelope (soft tactical swell and dip)
+      let step = 0;
+      this.pulseTimer = setInterval(() => {
         if (!this.isPlaying || !this.gainNode || !this.audioCtx) return;
-        pulseState = !pulseState;
+        step++;
         const t = this.audioCtx.currentTime;
+        const targetVol = (step % 2 === 0) ? 0.042 : 0.012;
         this.gainNode.gain.cancelScheduledValues(t);
-        this.gainNode.gain.linearRampToValueAtTime(pulseState ? 0.16 : 0.03, t + 0.05);
-      }, 350);
+        this.gainNode.gain.linearRampToValueAtTime(targetVol, t + 0.25);
+      }, 450);
 
     } catch (err) {
-      console.warn('[AGNIDRISHTI Audio] Web Audio API error:', err);
+      console.warn('[AGNIDRISHTI Audio] Audio context initialization error:', err);
       this.isPlaying = false;
     }
   }
@@ -93,16 +100,16 @@ class AlertSoundService {
   stopEmergencySiren() {
     if (!this.isPlaying) return;
 
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.pulseTimer) {
+      clearInterval(this.pulseTimer);
+      this.pulseTimer = null;
     }
 
     try {
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
-        this.gainNode.gain.linearRampToValueAtTime(0.001, now + 0.08);
+        this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.1);
 
         setTimeout(() => {
           try {
@@ -111,7 +118,7 @@ class AlertSoundService {
             if (this.lfo) { this.lfo.stop(); this.lfo.disconnect(); this.lfo = null; }
             if (this.gainNode) { this.gainNode.disconnect(); this.gainNode = null; }
           } catch (e) {}
-        }, 100);
+        }, 120);
       }
     } catch (err) {
       console.warn('[AGNIDRISHTI Audio] Error stopping siren:', err);
