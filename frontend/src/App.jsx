@@ -4,6 +4,7 @@ import OperationsSidebar from './components/OperationsSidebar';
 import GisMapViewer from './components/GisMapViewer';
 import IncidentInspector from './components/IncidentInspector';
 import NdrfDossierModal from './components/NdrfDossierModal';
+import LandingPage from './LandingPage';
 import {
   getAnalyticsSummary,
   getFires,
@@ -13,6 +14,7 @@ import {
 } from './services/api';
 
 export default function App() {
+  const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'platform'
   const [summary, setSummary] = useState(null);
   const [fires, setFires] = useState([]);
   const [facilities, setFacilities] = useState(null);
@@ -109,6 +111,10 @@ export default function App() {
 
   const activeEmergencies = fires.filter(f => f.is_emergency).length;
 
+  if (currentView === 'landing') {
+    return <LandingPage onOpenPlatform={() => setCurrentView('platform')} />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-slate-100 select-none">
       {/* 1. Tactical Navigation Header */}
@@ -116,6 +122,7 @@ export default function App() {
         summary={summary}
         isLive={isLive}
         activeEmergencyCount={activeEmergencies}
+        onBackToLanding={() => setCurrentView('landing')}
       />
 
       {/* 2. Main Body (Sidebar + GIS Map) */}
