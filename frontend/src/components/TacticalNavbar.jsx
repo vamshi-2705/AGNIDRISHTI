@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff, Home, ArrowLeft } from 'lucide-react';
+import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff, ArrowLeft } from 'lucide-react';
 
 export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, onBackToLanding }) {
   const [timeStr, setTimeStr] = useState('');
@@ -143,17 +143,7 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
           <span>{timeStr || '12:00:00 UTC'}</span>
         </div>
 
-        {/* Back to Landing Page Button */}
-        {onBackToLanding && (
-          <button
-            onClick={onBackToLanding}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 hover:border-cyan-400 text-[11px] font-mono text-cyan-300 hover:text-white transition-all shadow-sm"
-            title="Return to Landing Page"
-          >
-            <Home className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden md:inline">LANDING</span>
-          </button>
-        )}
+
       </div>
     </header>
   );
