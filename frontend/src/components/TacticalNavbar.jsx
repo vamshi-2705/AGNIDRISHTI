@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff } from 'lucide-react';
+import { Radio, ShieldAlert, Activity, Flame, Clock, Wifi, WifiOff, Home } from 'lucide-react';
 
-export default function TacticalNavbar({ summary, isLive, activeEmergencyCount }) {
+export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, onBackToLanding }) {
   const [timeStr, setTimeStr] = useState('');
 
   useEffect(() => {
@@ -29,26 +29,32 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount }
     <header className="h-16 bg-[#080c14] border-b border-slate-800/80 px-4 flex items-center justify-between z-30 shrink-0 select-none">
       {/* Left: Branding & Organization */}
       <div className="flex items-center gap-3">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-950/80 to-slate-900 border border-cyan-500/40 shadow-lg shadow-cyan-500/10">
-          <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
-          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
-          </span>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-extrabold tracking-wider bg-gradient-to-r from-slate-100 via-cyan-200 to-sky-400 bg-clip-text text-transparent font-mono">
-              AGNIDRISHTI
-            </h1>
-            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-400 border border-sky-700/50">
-              SIH-26162
+        <div 
+          className={`flex items-center gap-3 ${onBackToLanding ? 'cursor-pointer group' : ''}`}
+          onClick={onBackToLanding}
+          title={onBackToLanding ? "Return to Landing Page" : undefined}
+        >
+          <div className="relative flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-950/80 to-slate-900 border border-cyan-500/40 shadow-lg shadow-cyan-500/10 group-hover:border-cyan-400 transition-colors">
+            <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
             </span>
           </div>
-          <p className="text-[10px] text-slate-400 tracking-wider uppercase font-mono">
-            NTRO • Geospatial Industrial Fire Surveillance
-          </p>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-extrabold tracking-wider bg-gradient-to-r from-slate-100 via-cyan-200 to-sky-400 bg-clip-text text-transparent font-mono">
+                AGNIDRISHTI
+              </h1>
+              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-400 border border-sky-700/50">
+                SIH-26162
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 tracking-wider uppercase font-mono">
+              NTRO • Geospatial Industrial Fire Surveillance
+            </p>
+          </div>
         </div>
 
         {/* Live / Offline Status Chip */}
@@ -124,6 +130,18 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount }
           <Clock className="w-3.5 h-3.5 text-cyan-400" />
           <span>{timeStr || '12:00:00 UTC'}</span>
         </div>
+
+        {/* Back to Landing Page Button */}
+        {onBackToLanding && (
+          <button
+            onClick={onBackToLanding}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/30 hover:border-cyan-400 text-[11px] font-mono text-cyan-300 hover:text-white transition-all shadow-sm"
+            title="Return to Landing Page"
+          >
+            <Home className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden md:inline">LANDING</span>
+          </button>
+        )}
       </div>
     </header>
   );
