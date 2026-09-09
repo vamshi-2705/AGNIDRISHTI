@@ -129,18 +129,28 @@ export default function IncidentInspector({
           </h3>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {isEmergency && (
             <button
               onClick={handleToggleAlertSound}
-              className={`p-1.5 rounded-md border transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-mono font-bold transition-all cursor-pointer ${
                 isAlertSoundActive 
                   ? 'bg-red-600/90 text-white border-red-400 shadow-md shadow-red-500/30 animate-pulse' 
-                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+                  : 'bg-slate-800/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
               }`}
               title={isAlertSoundActive ? "Stop Emergency Siren" : "Start Emergency Siren"}
             >
-              {isAlertSoundActive ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {isAlertSoundActive ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                  <span>SIREN ON</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                  <span>SIREN MUTED</span>
+                </>
+              )}
             </button>
           )}
           <button
@@ -154,45 +164,21 @@ export default function IncidentInspector({
       </div>
 
       <div className="p-4 space-y-3.5 text-xs font-sans">
-        {/* 0. EMERGENCY AUDIO SIREN CONTROLLER BANNER */}
+        {/* 0. EMERGENCY ALERT STATUS BANNER */}
         {isEmergency && (
-          <div className="flex items-center justify-between p-3 rounded-lg bg-red-950/70 border border-red-500/60 shadow-lg shadow-red-500/20">
-            <div className="flex items-center gap-2.5">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
-              </span>
-              <div>
-                <div className="text-[11px] font-mono font-extrabold text-red-200 tracking-wider">
-                  DEFCON 2 EMERGENCY ALERT
-                </div>
-                <div className="text-[9.5px] font-mono text-red-300/80">
-                  {isAlertSoundActive ? "🚨 Siren active • Auditory warning ringing" : "🔇 Siren muted • Visual alert active"}
-                </div>
+          <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-red-950/70 border border-red-500/60 shadow-lg shadow-red-500/20">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+            </span>
+            <div>
+              <div className="text-[11px] font-mono font-extrabold text-red-200 tracking-wider">
+                DEFCON 2 EMERGENCY ALERT
+              </div>
+              <div className="text-[9.5px] font-mono text-red-300/80">
+                {isAlertSoundActive ? "🚨 Auditory siren warning active" : "🔇 Siren muted • Visual alert active"}
               </div>
             </div>
-
-            <button
-              onClick={handleToggleAlertSound}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer shadow-md ${
-                isAlertSoundActive
-                  ? 'bg-red-600 hover:bg-red-700 text-white border border-red-400'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600'
-              }`}
-              title={isAlertSoundActive ? "Stop alert sound" : "Start alert sound"}
-            >
-              {isAlertSoundActive ? (
-                <>
-                  <VolumeX className="w-3.5 h-3.5" />
-                  <span>STOP SOUND</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-3.5 h-3.5 text-red-400" />
-                  <span>START SOUND</span>
-                </>
-              )}
-            </button>
           </div>
         )}
 
