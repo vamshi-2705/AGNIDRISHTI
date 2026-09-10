@@ -101,10 +101,10 @@
 @keyframes thermalRingCritical {
   0% {
     transform: scale(1);
-    opacity: 0.38;
+    opacity: 0.30;
   }
   100% {
-    transform: scale(1.7);
+    transform: scale(1.5);
     opacity: 0;
   }
 }
@@ -125,7 +125,7 @@
 }
 
 .thermal-ring-critical {
-  animation: thermalRingCritical 1.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  animation: thermalRingCritical 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
   will-change: transform, opacity;
 }
 
@@ -136,4 +136,9 @@
   .thermal-ring-critical {
     animation: none !important;
   }
+}
+
+/* Point 1: Slightly brighten map geography (8-12% more readable, crisp borders/labels) */
+.leaflet-tile-pane {
+  filter: brightness(1.10) contrast(1.04);
 }

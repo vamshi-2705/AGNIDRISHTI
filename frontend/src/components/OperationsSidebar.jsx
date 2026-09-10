@@ -130,65 +130,79 @@ export default function OperationsSidebar({
           processedFires.map((fire) => {
             const isSelected = selectedFire?.fire_id === fire.fire_id;
             const isEmergency = fire.is_emergency;
+            const isFlare = fire.category === 'PERSISTENT_INDUSTRIAL_FLARE';
+            const isCoal = fire.category === 'COAL_MINING_FIRE';
 
             return (
               <div
                 key={fire.fire_id}
                 onClick={() => onSelectFire(fire)}
-                className={`group p-3 rounded-md border cursor-pointer transition-all ${
+                className={`group p-2.5 rounded-md border cursor-pointer transition-all ${
                   isEmergency
                     ? isSelected
-                      ? 'bg-[#1a1417] border-l-4 border-l-red-500 border-white/[0.15] shadow-md'
-                      : 'bg-[#151214] border-l-4 border-l-red-500/80 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#1a1518]'
+                      ? 'bg-[#181215] border-l-2 border-l-red-500 border-white/[0.15] shadow-sm'
+                      : 'bg-[#131012] border-l-2 border-l-red-500/80 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#181316]'
+                    : isFlare
+                    ? isSelected
+                      ? 'bg-[#161b24] border-l-2 border-l-orange-500 border-white/[0.15] shadow-sm'
+                      : 'bg-[#12161d] border-l-2 border-l-orange-500/70 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#151a22]'
+                    : isCoal
+                    ? isSelected
+                      ? 'bg-[#161a22] border-l-2 border-l-amber-500 border-white/[0.15] shadow-sm'
+                      : 'bg-[#12151c] border-l-2 border-l-amber-500/70 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#151920]'
                     : isSelected
-                    ? 'bg-[#17202c] border-l-4 border-l-orange-500/80 border-white/[0.15] shadow-sm'
-                    : 'bg-[#12171e] border-l-2 border-l-transparent border-white/[0.05] hover:border-white/[0.1] hover:bg-[#151c24]'
+                    ? 'bg-[#141b20] border-l-2 border-l-emerald-500 border-white/[0.15] shadow-sm'
+                    : 'bg-[#11161d] border-l-2 border-l-emerald-500/60 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#131920]'
                 }`}
               >
-                {/* Top Row: Event ID, Severity Badge, FRP */}
-                <div className="flex items-center justify-between gap-2 mb-1">
+                {/* LINE 1: Dot + ID (Left) & Severity Badge (Right) */}
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 overflow-hidden">
                     <span
                       className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: fire.threat_color || '#64748b' }}
+                      style={{ backgroundColor: fire.threat_color || (isEmergency ? '#ef4444' : '#f97316') }}
                     ></span>
                     <span className="text-[11px] font-mono font-semibold text-slate-200 truncate">
                       {fire.fire_id}
                     </span>
-                    {isEmergency && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-sans font-semibold uppercase bg-red-900/60 text-red-200 border border-red-700/50">
-                        CRITICAL
-                      </span>
-                    )}
                   </div>
 
-                  {/* FRP Chip */}
-                  <div className={`px-2 py-0.5 rounded text-xs font-mono font-bold shrink-0 ${
-                    isEmergency ? 'bg-red-950/60 text-red-300' : 'bg-[#1a222d] text-orange-300'
-                  }`}>
-                    {fire.frp} MW
+                  {isEmergency ? (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-sans font-bold uppercase bg-red-950/80 text-red-300 border border-red-800/60">
+                      CRITICAL
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-sans font-medium uppercase bg-[#17202c] text-slate-400 border border-white/[0.05]">
+                      {fire.threat_level || 'EVALUATED'}
+                    </span>
+                  )}
+                </div>
+
+                {/* LINE 2 & LINE 3: Location (Left) + FRP & Anomaly Ratio (Right) */}
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-slate-100 truncate">
+                      {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector, India')}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5 font-sans">
+                      {fire.cause_analysis?.cause_title || fire.sub_category || fire.category}
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className={`text-xs font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-orange-300'}`}>
+                      {fire.frp} MW
+                    </div>
+                    <div className="text-[9.5px] font-mono font-semibold text-slate-300">
+                      {fire.anomaly_ratio ? `${fire.anomaly_ratio}× BASELINE` : 'NOMINAL BASELINE'}
+                    </div>
                   </div>
                 </div>
 
-                {/* Location (Prominent) */}
-                <div className="text-xs font-medium text-slate-200 truncate mb-0.5">
-                  {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector, India')}
-                </div>
-
-                {/* Formatted Coordinates & Sensor */}
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
-                  <span>{fire.location?.formatted_coords || `${fire.latitude?.toFixed(4)}° N, ${fire.longitude?.toFixed(4)}° E`}</span>
+                {/* LINE 4: Smaller Secondary Information (Sensor & Coordinates) */}
+                <div className="flex items-center justify-between text-[9.5px] font-mono text-slate-400 pt-1 border-t border-white/[0.05]">
                   <span>VIIRS {fire.instrument || '375m'}</span>
-                </div>
-
-                {/* Event Type & Anomaly Ratio */}
-                <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/[0.05] text-slate-400 font-sans">
-                  <span className="truncate max-w-[210px] text-slate-300">
-                    {fire.cause_analysis?.cause_title || fire.sub_category || fire.category}
-                  </span>
-                  <span className="text-slate-300 font-medium font-mono shrink-0">
-                    {fire.anomaly_ratio ? `${fire.anomaly_ratio}x baseline` : 'Baseline nominal'}
-                  </span>
+                  <span>{fire.location?.formatted_coords || `${fire.latitude?.toFixed(3)}° N, ${fire.longitude?.toFixed(3)}° E`}</span>
                 </div>
               </div>
             );

@@ -1,8 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Database, ChevronRight, Layers, Satellite, Cpu, MapPin, Gauge, CheckCircle2 } from 'lucide-react';
 
 export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
   const [showSourcesModal, setShowSourcesModal] = useState(false);
+  const popoverRef = useRef(null);
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setShowSourcesModal(false);
+      }
+    }
+    if (showSourcesModal) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSourcesModal]);
 
   return (
     <div className="relative h-8 bg-[#090d12] border-b border-white/[0.07] px-4 flex items-center justify-between z-20 shrink-0 text-xs font-sans select-none">
@@ -19,7 +35,7 @@ export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
           <span className={`px-1 py-0.2 rounded text-[9px] font-mono font-semibold ${
             isLive ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
           }`}>
-            {isLive ? 'LIVE' : 'SIMULATED'}
+            {isLive ? 'LIVE' : 'FALLBACK'}
           </span>
         </div>
 
@@ -69,7 +85,7 @@ export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
       </div>
 
       {/* Right: Integrated Data Sources Popover Trigger */}
-      <div className="relative">
+      <div className="relative" ref={popoverRef}>
         <button
           onClick={() => setShowSourcesModal(!showSourcesModal)}
           className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#131922] hover:bg-[#1a232f] border border-white/[0.08] hover:border-slate-500 text-[10px] font-medium text-slate-300 hover:text-white transition-all cursor-pointer"
@@ -77,71 +93,95 @@ export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
         >
           <Database className="w-3 h-3 text-emerald-400" />
           <span>DATA SOURCES</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 ml-0.5"></span>
+          <span className={`w-1.5 h-1.5 rounded-full ml-0.5 ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
         </button>
 
-        {/* Dropdown / Popover */}
+        {/* Compact Credibility Popover Panel (with click-outside closing) */}
         {showSourcesModal && (
-          <div className="absolute right-0 top-9 w-72 bg-[#10151c] border border-white/[0.1] rounded-lg shadow-2xl p-3 z-50 text-slate-200">
+          <div className="absolute right-0 top-9 w-80 bg-[#10151c] border border-white/[0.1] rounded-lg shadow-2xl p-3 z-50 text-slate-200 transition-all">
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.08]">
               <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
                 <Layers className="w-3.5 h-3.5 text-orange-400" />
-                <span>INTEGRATED DATA SOURCES</span>
+                <span>DATA SOURCES</span>
               </div>
               <button
                 onClick={() => setShowSourcesModal(false)}
-                className="text-slate-400 hover:text-white text-xs cursor-pointer"
+                className="text-slate-400 hover:text-white text-xs cursor-pointer p-0.5"
               >
                 ✕
               </button>
             </div>
 
             <div className="space-y-2 text-[11px]">
-              <div className="flex items-start justify-between p-1.5 rounded bg-[#161d26] border border-white/[0.04]">
+              {/* Source 1: NASA FIRMS */}
+              <div className="flex items-start justify-between p-2 rounded bg-[#151c24] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-100">NASA FIRMS</div>
-                  <div className="text-[10px] text-slate-400">VIIRS I-Band 375m Radiometer</div>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-100">
+                    <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
+                    <span>NASA FIRMS</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 pl-3.5 mt-0.5">
+                    VIIRS thermal observations
+                  </div>
                 </div>
-                <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold ${
+                <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold shrink-0 ${
                   isLive ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50' : 'bg-amber-950 text-amber-300 border border-amber-800/50'
                 }`}>
-                  {isLive ? 'LIVE NRT' : 'CALIBRATED'}
+                  {isLive ? 'LIVE' : 'FALLBACK'}
                 </span>
               </div>
 
-              <div className="flex items-start justify-between p-1.5 rounded bg-[#161d26] border border-white/[0.04]">
+              {/* Source 2: OpenStreetMap */}
+              <div className="flex items-start justify-between p-2 rounded bg-[#151c24] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-100">OpenStreetMap</div>
-                  <div className="text-[10px] text-slate-400">Overpass API & Nominatim</div>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-100">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>OpenStreetMap</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 pl-3.5 mt-0.5">
+                    Industrial facility context
+                  </div>
                 </div>
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/50">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/50 shrink-0">
                   LIVE
                 </span>
               </div>
 
-              <div className="flex items-start justify-between p-1.5 rounded bg-[#161d26] border border-white/[0.04]">
+              {/* Source 3: Open-Meteo */}
+              <div className="flex items-start justify-between p-2 rounded bg-[#151c24] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-100">Open-Meteo</div>
-                  <div className="text-[10px] text-slate-400">Atmospheric Wind Vectors</div>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-100">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Open-Meteo</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 pl-3.5 mt-0.5">
+                    Wind / atmospheric conditions
+                  </div>
                 </div>
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/50">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/50 shrink-0">
                   LIVE
                 </span>
               </div>
 
-              <div className="flex items-start justify-between p-1.5 rounded bg-[#161d26] border border-white/[0.04]">
+              {/* Source 4: ESA WorldCover */}
+              <div className="flex items-start justify-between p-2 rounded bg-[#151c24] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-100">ESA WorldCover</div>
-                  <div className="text-[10px] text-slate-400">10m Land Cover Baseline</div>
+                  <div className="flex items-center gap-1.5 font-medium text-slate-100">
+                    <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span>ESA WorldCover</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 pl-3.5 mt-0.5">
+                    Land-cover context
+                  </div>
                 </div>
-                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-slate-800 text-slate-300 border border-white/[0.08]">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-slate-800 text-slate-300 border border-white/[0.08] shrink-0">
                   BASELINE
                 </span>
               </div>
             </div>
 
-            <div className="mt-2.5 pt-2 border-t border-white/[0.06] text-[9px] text-slate-400 text-center font-sans">
-              All multi-sensor inputs are correlated in real time.
+            <div className="mt-2.5 pt-2 border-t border-white/[0.06] text-[9.5px] text-slate-400 text-center font-sans">
+              Live multi-spectral inputs correlated in real time.
             </div>
           </div>
         )}

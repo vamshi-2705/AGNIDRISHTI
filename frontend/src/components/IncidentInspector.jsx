@@ -370,78 +370,104 @@ export default function IncidentInspector({
             <span className="font-semibold text-slate-200">CURRENT OBSERVATION</span>
           </div>
 
-          {/* Below Chart 3 Metrics */}
+          {/* Baseline Comparison Directly Below Chart */}
           <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-white/[0.05] text-center">
             <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
-              <div className="text-[9px] text-slate-400 font-sans uppercase">OBSERVED FRP</div>
+              <div className="text-[9px] text-slate-400 font-sans uppercase">CURRENT OBSERVATION</div>
               <div className={`text-xs font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-orange-300'}`}>
                 {currentFrp} MW
               </div>
             </div>
 
             <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
-              <div className="text-[9px] text-slate-400 font-sans uppercase">BASELINE</div>
+              <div className="text-[9px] text-slate-400 font-sans uppercase">NORMAL BASELINE</div>
               <div className="text-xs font-bold font-mono text-slate-200">
                 {baselineFrp} MW
               </div>
             </div>
 
             <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
-              <div className="text-[9px] text-slate-400 font-sans uppercase">ANOMALY RATIO</div>
+              <div className="text-[9px] text-slate-400 font-sans uppercase">ANOMALY</div>
               <div className={`text-xs font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-sky-300'}`}>
-                {anomalyRatio}x ABOVE BASELINE
+                {anomalyRatio}× BASELINE
               </div>
             </div>
           </div>
         </div>
 
-        {/* 4. CLASSIFICATION EVIDENCE (Requirement 4 - Evidence-First Explainability) */}
+        {/* 4. WHY FLAGGED Evidence Section (Requirement 5 & 6) */}
         <div className="p-3 rounded bg-[#141a22] border border-white/[0.08]">
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
-              CLASSIFICATION EVIDENCE
+              WHY FLAGGED
             </div>
             <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#1b2430] text-slate-300 border border-white/[0.05]">
-              EVIDENCE-FIRST
+              EVIDENCE-DRIVEN
             </span>
           </div>
 
-          <div className="text-xs font-semibold text-slate-100 mb-1">
-            {cause.cause_title}
+          {/* Clean Evidence Table Layout */}
+          <div className="space-y-1.5 text-[10.5px]">
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">Industrial perimeter</span>
+              </div>
+              <span className={`font-mono text-[10px] font-bold ${fire.is_industrial ? 'text-emerald-400' : 'text-slate-400'}`}>
+                {fire.is_industrial ? 'MATCH' : 'TERRAIN'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">FRP anomaly</span>
+              </div>
+              <span className={`font-mono text-[10px] font-bold ${
+                isEmergency ? 'text-red-400' : currentFrp >= 100 ? 'text-orange-400' : 'text-amber-400'
+              }`}>
+                {isEmergency ? 'CRITICAL' : currentFrp >= 100 ? 'HIGH' : 'ELEVATED'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">Baseline deviation</span>
+              </div>
+              <span className={`font-mono text-[10px] font-bold ${isEmergency ? 'text-red-400' : 'text-sky-300'}`}>
+                {anomalyRatio}×
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">Facility context</span>
+              </div>
+              <span className="font-mono text-[10px] font-bold text-slate-200">
+                {fire.facility_name ? 'VERIFIED' : 'IDENTIFIED'}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">Satellite observation</span>
+              </div>
+              <span className="font-mono text-[10px] font-bold text-slate-200">
+                CONFIRMED
+              </span>
+            </div>
           </div>
 
-          <p className="text-[10.5px] text-slate-300 leading-relaxed mb-2.5 font-sans">
-            {cause.cause_mechanism}
-          </p>
-
-          {/* Structured Evidence Checklist */}
-          <div className="space-y-1.5 pt-2 border-t border-white/[0.05] text-[10.5px]">
-            <div className="text-slate-400 uppercase text-[9px] font-semibold tracking-wider font-sans mb-1">
-              SUPPORTING EVIDENCE
+          {/* Contextual Description */}
+          <div className="mt-2 pt-2 border-t border-white/[0.05] text-[10px] text-slate-400 font-sans">
+            <div className="text-slate-200 font-medium mb-0.5 truncate">
+              {cause.cause_title}
             </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Industrial perimeter match ({fire.is_industrial ? (fire.facility_name || 'OSM Industrial boundary confirmed') : 'Non-industrial terrain polygon'})</span>
-            </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Elevated FRP ({currentFrp} MW observed vs {baselineFrp} MW nominal threshold)</span>
-            </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Baseline deviation ({anomalyRatio}x statistical threshold deviation)</span>
-            </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Facility context verified ({fire.site_hint || 'Industrial infrastructure profile verified'})</span>
-            </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Land-cover context (ESA WorldCover / OSM classification matched)</span>
-            </div>
-            <div className="text-slate-300 flex items-start gap-1.5">
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-              <span>Multi-spectral radiometry (VIIRS 375m Day/Night Band verification)</span>
+            <div className="text-slate-400 text-[9.5px] leading-relaxed">
+              {cause.cause_mechanism}
             </div>
           </div>
         </div>

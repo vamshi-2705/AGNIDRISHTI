@@ -77,39 +77,31 @@ function createFireIcon(fire, isSelected) {
     : 'border: 1px solid rgba(0,0,0,0.6);';
 
   if (intensity === 'CRITICAL') {
-    // CRITICAL: ◉  ●  ◉ (strong expanding halo + concentric corona + core pulse)
-    containerSize = isSelected ? 44 : 38;
+    // CRITICAL: Strong red core + soft glow + single subtle expanding halo (No concentric radar rings)
+    containerSize = isSelected ? 40 : 34;
     coreSize = isSelected ? 20 : 17;
-    const coronaSize = coreSize + 10;
 
     innerHtml = `
       <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Strong expanding outer halo ring (1.4s) -->
-        <span class="absolute w-full h-full rounded-full thermal-ring-critical" style="background-color: ${color}; opacity: 0.42;"></span>
+        <!-- Single subtle expanding/fading halo (1.5s, scale 1 -> 1.5, opacity 0.30 -> 0) -->
+        <span class="absolute w-full h-full rounded-full thermal-ring-critical" style="background-color: ${color};"></span>
         
-        <!-- Concentric inner corona ring ◉ -->
-        <span class="absolute rounded-full" style="width: ${coronaSize}px; height: ${coronaSize}px; border: 1.5px solid ${color}; background-color: ${color}25; box-shadow: 0 0 8px ${color}60;"></span>
-        
-        <!-- Solid core with subtle breathing pulse ● -->
-        <span class="relative rounded-full thermal-core-critical" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 14px ${color};"></span>
+        <!-- Strong red thermal core with soft red/orange glow ● -->
+        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 12px rgba(239,68,68,0.75), 0 0 4px rgba(249,115,22,0.5);"></span>
       </div>
     `;
   } else if (intensity === 'HIGH') {
-    // HIGH: ·  ●  · (stronger glow + soft expanding ring + corona ring)
-    containerSize = isSelected ? 34 : 28;
-    coreSize = isSelected ? 17 : 14;
-    const coronaSize = coreSize + 8;
+    // HIGH: Solid core + stronger soft glow + single expanding halo ring
+    containerSize = isSelected ? 32 : 26;
+    coreSize = isSelected ? 16 : 13;
 
     innerHtml = `
       <div class="relative flex items-center justify-center w-full h-full">
         <!-- Expanding soft halo ring (2.0s) -->
-        <span class="absolute w-full h-full rounded-full thermal-ring-high" style="background-color: ${color}; opacity: 0.28;"></span>
+        <span class="absolute w-full h-full rounded-full thermal-ring-high" style="background-color: ${color}; opacity: 0.22;"></span>
         
-        <!-- Inner glow ring · ● · -->
-        <span class="absolute rounded-full" style="width: ${coronaSize}px; height: ${coronaSize}px; border: 1px solid ${color}60; background-color: ${color}18;"></span>
-        
-        <!-- Solid core with stronger glow ● -->
-        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 10px ${color}a0;"></span>
+        <!-- Solid core with stronger soft glow ● -->
+        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 9px ${color}90;"></span>
       </div>
     `;
   } else if (intensity === 'MODERATE') {
