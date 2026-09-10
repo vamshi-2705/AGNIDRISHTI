@@ -1,5 +1,5 @@
 /**
- * Calibrated Fallback Dataset for ASTRAFIRE Frontend
+ * Calibrated Fallback Dataset for AGNIDRISHTI Frontend
  * Provides fail-safe operational continuity if backend is initializing or offline.
  */
 

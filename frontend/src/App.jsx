@@ -77,7 +77,7 @@ export default function App() {
       setFires(firesRes.data);
       setIsLive(firesRes.isLive);
     } catch (err) {
-      console.error('[ASTRAFIRE] Initialization error:', err);
+      console.error('[AGNIDRISHTI] Initialization error:', err);
     } finally {
       setLoading(false);
     }
@@ -128,7 +128,7 @@ export default function App() {
       const res = await getPlume(selectedFire.fire_id);
       setActivePlume(res.data);
     } catch (err) {
-      console.error('[ASTRAFIRE] Plume error:', err);
+      console.error('[AGNIDRISHTI] Plume error:', err);
     } finally {
       setPlumeLoading(false);
     }
@@ -141,7 +141,7 @@ export default function App() {
       const res = await getIncidentReport(selectedFire.fire_id);
       setReportModalData(res.data);
     } catch (err) {
-      console.error('[ASTRAFIRE] Report error:', err);
+      console.error('[AGNIDRISHTI] Report error:', err);
     }
   };
 
@@ -152,8 +152,8 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080c14] text-slate-100 select-none">
-      {/* 1. Tactical Navigation Header */}
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080b0f] text-slate-100 select-none">
+      {/* 1. Primary Navigation Header */}
       <TacticalNavbar
         summary={summary}
         isLive={isLive}

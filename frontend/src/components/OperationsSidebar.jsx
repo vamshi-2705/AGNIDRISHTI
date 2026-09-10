@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Flame, ShieldAlert, Search, Filter, AlertTriangle, ArrowUpDown, ChevronRight, Activity } from 'lucide-react';
+import { Flame, Search, Filter, ArrowUpDown, Activity } from 'lucide-react';
 
 export default function OperationsSidebar({
   fires,
@@ -40,51 +40,51 @@ export default function OperationsSidebar({
   const emergencyCount = fires.filter(f => f.is_emergency).length;
 
   return (
-    <aside className="w-[380px] h-full bg-[#080c14] border-r border-slate-800/80 flex flex-col shrink-0 z-20 select-none">
-      {/* 1. Header & AI Noise Filter Control */}
-      <div className="p-3.5 border-b border-slate-800/80 bg-slate-950/60">
+    <aside className="w-[380px] h-full bg-[#0d1217] border-r border-white/[0.08] flex flex-col shrink-0 z-20 select-none font-sans">
+      {/* 1. Header & Filter Control */}
+      <div className="p-3.5 border-b border-white/[0.08] bg-[#10151c]">
         <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-300">
-            <Filter className="w-3.5 h-3.5 text-cyan-400" />
-            <span>AI NOISE FILTER CONTROLLER</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-200">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <span>THERMAL EVENTS</span>
           </div>
           <span className="text-[11px] font-mono text-slate-400">
             Showing <strong className="text-slate-200">{processedFires.length}</strong> / {fires.length}
           </span>
         </div>
 
-        {/* Segmented Pill Buttons */}
-        <div className="grid grid-cols-3 p-1 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono">
+        {/* Filter Tabs */}
+        <div className="grid grid-cols-3 p-1 rounded-md bg-[#151b22] border border-white/[0.08] text-xs font-mono">
           <button
             onClick={() => setFilterMode('all')}
-            className={`py-1.5 px-2 rounded-md transition-all text-center ${
+            className={`py-1.5 px-2 rounded transition-all text-center ${
               filterMode === 'all'
-                ? 'bg-slate-800 text-cyan-300 font-semibold shadow'
+                ? 'bg-[#222c38] text-white font-medium shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            All Hotspots
+            ALL EVENTS
           </button>
           <button
             onClick={() => setFilterMode('industrial')}
-            className={`py-1.5 px-2 rounded-md transition-all text-center ${
+            className={`py-1.5 px-2 rounded transition-all text-center ${
               filterMode === 'industrial'
-                ? 'bg-amber-950/80 text-amber-300 font-semibold border border-amber-800/50 shadow'
+                ? 'bg-[#222c38] text-orange-300 font-medium shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Industrial
+            INDUSTRIAL
           </button>
           <button
             onClick={() => setFilterMode('emergencies')}
-            className={`py-1.5 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1 ${
+            className={`py-1.5 px-2 rounded transition-all text-center flex items-center justify-center gap-1.5 ${
               filterMode === 'emergencies'
-                ? 'bg-red-950 text-red-300 font-bold border border-red-700/60 shadow'
-                : 'text-red-400/80 hover:text-red-300'
+                ? 'bg-red-950/60 text-red-300 font-semibold border border-red-800/40 shadow-sm'
+                : 'text-slate-400 hover:text-red-300'
             }`}
           >
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-            🚨 Alert ({emergencyCount})
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+            CRITICAL ({emergencyCount})
           </button>
         </div>
 
@@ -97,7 +97,7 @@ export default function OperationsSidebar({
               placeholder="Search facility, fire ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1.5 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/60 font-mono"
+              className="w-full pl-8 pr-2.5 py-1.5 rounded-md bg-[#151b22] border border-white/[0.08] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500 font-mono"
             />
           </div>
 
@@ -105,10 +105,10 @@ export default function OperationsSidebar({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 pl-2 pr-6 py-1.5 rounded-md focus:outline-none focus:border-cyan-500/60 cursor-pointer"
+              className="appearance-none bg-[#151b22] border border-white/[0.08] text-[11px] font-mono text-slate-300 pl-2 pr-6 py-1.5 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="frp">Sort: Max FRP</option>
-              <option value="threat">Sort: Threat</option>
+              <option value="threat">Sort: Severity</option>
             </select>
             <ArrowUpDown className="w-3 h-3 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -116,79 +116,78 @@ export default function OperationsSidebar({
       </div>
 
       {/* 2. Scrollable Incident Feed */}
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
         {loading ? (
-          <div className="py-12 text-center text-xs font-mono text-slate-500 flex flex-col items-center gap-2">
-            <Activity className="w-6 h-6 text-cyan-400 animate-spin" />
-            <span>Scanning Satellite Ingestion Stream...</span>
+          <div className="py-12 text-center text-xs font-mono text-slate-400 flex flex-col items-center gap-2">
+            <Activity className="w-5 h-5 text-slate-400 animate-spin" />
+            <span>Processing thermal observations...</span>
           </div>
         ) : processedFires.length === 0 ? (
           <div className="py-12 text-center text-xs font-mono text-slate-500">
-            No thermal anomalies match criteria.
+            No thermal observations match criteria.
           </div>
         ) : (
           processedFires.map((fire) => {
             const isSelected = selectedFire?.fire_id === fire.fire_id;
             const isEmergency = fire.is_emergency;
-            const isIndustrial = fire.is_industrial;
 
             return (
               <div
                 key={fire.fire_id}
                 onClick={() => onSelectFire(fire)}
-                className={`group p-3 rounded-lg border cursor-pointer transition-all ${
+                className={`group p-3 rounded-md border cursor-pointer transition-all ${
                   isEmergency
                     ? isSelected
-                      ? 'bg-red-950/60 border-red-500 shadow-lg shadow-red-500/25 ring-1 ring-red-400'
-                      : 'bg-red-950/30 border-red-700/50 hover:border-red-500 hover:bg-red-950/40 shadow-sm'
+                      ? 'bg-[#1a1417] border-l-4 border-l-red-500 border-white/[0.12] shadow-md'
+                      : 'bg-[#151214] border-l-4 border-l-red-500/80 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#1a1518]'
                     : isSelected
-                    ? 'bg-slate-800/90 border-cyan-500 shadow-md ring-1 ring-cyan-500/50'
-                    : 'bg-slate-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/50'
+                    ? 'bg-[#17202c] border-l-4 border-l-sky-500 border-white/[0.12] shadow-sm'
+                    : 'bg-[#12171e] border-l-2 border-l-transparent border-white/[0.05] hover:border-white/[0.1] hover:bg-[#151c24]'
                 }`}
               >
-                {/* Top Row: Threat Badge & FRP */}
-                <div className="flex items-center justify-between gap-2 mb-1.5">
+                {/* Top Row: Event ID & Severity Badge */}
+                <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-1.5 overflow-hidden">
                     <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      className="w-2 h-2 rounded-full shrink-0"
                       style={{ backgroundColor: fire.threat_color || '#64748b' }}
                     ></span>
-                    <span className="text-[11px] font-mono font-bold tracking-tight text-slate-200 truncate">
+                    <span className="text-[11px] font-mono font-semibold text-slate-200 truncate">
                       {fire.fire_id}
                     </span>
                     {isEmergency && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-extrabold uppercase bg-red-600 text-white animate-pulse">
-                        EMERGENCY
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase bg-red-900/60 text-red-200 border border-red-700/50">
+                        CRITICAL
                       </span>
                     )}
                   </div>
 
-                  {/* FRP MW Chip */}
+                  {/* FRP Chip */}
                   <div className={`px-2 py-0.5 rounded text-xs font-mono font-bold shrink-0 ${
-                    isEmergency ? 'bg-red-900/80 text-red-200' : 'bg-slate-800 text-amber-300'
+                    isEmergency ? 'bg-red-950/60 text-red-300' : 'bg-[#1a222d] text-orange-300'
                   }`}>
                     {fire.frp} MW
                   </div>
                 </div>
 
-                {/* Middle Row: Exact Location Name */}
-                <div className="text-xs font-semibold text-slate-200 truncate mb-0.5">
+                {/* Location */}
+                <div className="text-xs font-medium text-slate-200 truncate mb-0.5">
                   {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector, India')}
                 </div>
 
-                {/* Formatted Coordinates & Satellite Sensor */}
-                <div className="flex items-center justify-between text-[10px] font-mono text-cyan-400/90 mb-1">
+                {/* Formatted Coordinates & Sensor */}
+                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
                   <span>{fire.location?.formatted_coords || `${fire.latitude?.toFixed(4)}° N, ${fire.longitude?.toFixed(4)}° E`}</span>
-                  <span className="text-slate-400">VIIRS {fire.instrument || '375m'}</span>
+                  <span>VIIRS {fire.instrument || '375m'}</span>
                 </div>
 
-                {/* AI Cause Attribution & Certainty */}
-                <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-slate-800/60 text-slate-400">
+                {/* Event Classification & Anomaly Context */}
+                <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-white/[0.05] text-slate-400">
                   <span className="truncate max-w-[210px] text-slate-300">
                     {fire.cause_analysis?.cause_title || fire.sub_category || fire.category}
                   </span>
-                  <span className="text-emerald-400 font-bold shrink-0">
-                    {fire.cause_analysis?.certainty_pct || 90}% AI
+                  <span className="text-slate-300 font-medium shrink-0">
+                    {fire.anomaly_ratio ? `${fire.anomaly_ratio}x baseline` : 'Baseline nominal'}
                   </span>
                 </div>
               </div>
@@ -198,17 +197,14 @@ export default function OperationsSidebar({
       </div>
 
       {/* 3. Bottom Status Bar */}
-      <div className="p-2.5 bg-slate-950 border-t border-slate-800/80 text-[10px] font-mono flex items-center justify-between text-slate-400">
+      <div className="p-2.5 bg-[#10151c] border-t border-white/[0.08] text-[10px] font-mono flex items-center justify-between text-slate-400">
         <div className="flex items-center gap-2">
-          <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span>NASA VIIRS: <strong>ONLINE</strong></span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span>DATA STREAM: <strong className="text-slate-300">ONLINE</strong></span>
         </div>
-        <div className="text-slate-400">
-          BACKEND: <span className={isLive ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
-            {isLive ? '200 OK' : 'CALIBRATED'}
+        <div>
+          STATUS: <span className={isLive ? 'text-emerald-400 font-medium' : 'text-amber-400'}>
+            {isLive ? 'LIVE FEED' : 'BACKUP MODE'}
           </span>
         </div>
       </div>

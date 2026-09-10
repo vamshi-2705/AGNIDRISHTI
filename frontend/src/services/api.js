@@ -1,5 +1,5 @@
 /**
- * ASTRAFIRE Frontend API Client
+ * AGNIDRISHTI Frontend API Client
  * Base URL: http://127.0.0.1:8000
  * Automatic fail-safe resilience with calibrated fallback dataset.
  */
@@ -34,7 +34,7 @@ export async function getAnalyticsSummary() {
     const data = await fetchWithTimeout(`${BASE_URL}/api/analytics/summary`);
     return { data, isLive: true };
   } catch (err) {
-    console.warn('[ASTRAFIRE API] Summary fetch failed, engaging calibrated fallback.', err.message);
+    console.warn('[AGNIDRISHTI API] Summary fetch failed, engaging calibrated fallback.', err.message);
     return { data: FALLBACK_SUMMARY, isLive: false };
   }
 }
@@ -44,7 +44,7 @@ export async function getFires(filterMode = 'all') {
     const data = await fetchWithTimeout(`${BASE_URL}/api/fires?filter_mode=${filterMode}`);
     return { data: data.data || [], total: data.total_records || 0, isLive: true };
   } catch (err) {
-    console.warn(`[ASTRAFIRE API] Fires (${filterMode}) fetch failed, engaging calibrated fallback.`, err.message);
+    console.warn(`[AGNIDRISHTI API] Fires (${filterMode}) fetch failed, engaging calibrated fallback.`, err.message);
     let filtered = FALLBACK_FIRES;
     if (filterMode === 'industrial') {
       filtered = FALLBACK_FIRES.filter(f => f.is_industrial);
@@ -60,7 +60,7 @@ export async function getFacilities() {
     const data = await fetchWithTimeout(`${BASE_URL}/api/facilities`);
     return { data, isLive: true };
   } catch (err) {
-    console.warn('[ASTRAFIRE API] Facilities fetch failed, engaging calibrated fallback.', err.message);
+    console.warn('[AGNIDRISHTI API] Facilities fetch failed, engaging calibrated fallback.', err.message);
     return { data: FALLBACK_FACILITIES, isLive: false };
   }
 }
@@ -70,7 +70,7 @@ export async function getPlume(fireId) {
     const data = await fetchWithTimeout(`${BASE_URL}/api/plume/${fireId}`);
     return { data, isLive: true };
   } catch (err) {
-    console.warn(`[ASTRAFIRE API] Plume fetch failed for ${fireId}, generating client-side fallback cone.`, err.message);
+    console.warn(`[AGNIDRISHTI API] Plume fetch failed for ${fireId}, generating client-side fallback cone.`, err.message);
     // Find matching fire
     const fire = FALLBACK_FIRES.find(f => f.fire_id === fireId) || FALLBACK_FIRES[0];
     const downwindDeg = ((fire.wind_direction_deg || 235) + 180) % 360;
@@ -96,7 +96,7 @@ export async function getPlume(fireId) {
         type: "Feature",
         properties: {
           fire_id: fire.fire_id,
-          hazard_tier: fire.is_emergency ? "TIER-1 CRITICAL TOXIC HAZARD" : "TIER-3 ROUTINE INDUSTRIAL FLUE PLUME",
+          hazard_tier: fire.is_emergency ? "CRITICAL THERMAL ANOMALY" : "ROUTINE INDUSTRIAL FLUE PLUME",
           hazard_length_km: Number(lengthKm.toFixed(1)),
           wind_speed_kmh: fire.wind_speed_kmh,
           wind_direction_deg: fire.wind_direction_deg,
@@ -104,7 +104,7 @@ export async function getPlume(fireId) {
           fill_color: fire.is_emergency ? "#DC2626" : "#F97316",
           fill_opacity: 0.35,
           warning: fire.is_emergency 
-            ? "IMMEDIATE EVACUATION MANDATED: High toxic combustion density and thermal buoyancy."
+            ? "POTENTIAL HIGH-RISK DOWNWIND CORRIDOR IDENTIFIED: Elevated thermal buoyancy observed."
             : "MONITORED DISPERSION: Controlled hydrocarbon combustion within regulatory limits."
         },
         geometry: {
@@ -122,7 +122,7 @@ export async function getIncidentReport(fireId) {
     const data = await fetchWithTimeout(`${BASE_URL}/api/incident/report/${fireId}`);
     return { data, isLive: true };
   } catch (err) {
-    console.warn(`[ASTRAFIRE API] Report fetch failed for ${fireId}, generating client-side fallback memo.`, err.message);
+    console.warn(`[AGNIDRISHTI API] Report fetch failed for ${fireId}, generating client-side fallback memo.`, err.message);
     const fire = FALLBACK_FIRES.find(f => f.fire_id === fireId) || FALLBACK_FIRES[0];
     return {
       data: {
@@ -149,14 +149,14 @@ export async function getIncidentReport(fireId) {
           }
         },
         atmospheric_dispersion_assessment: {
-          hazard_tier: fire.is_emergency ? "TIER-1 CRITICAL TOXIC HAZARD" : "TIER-3 ROUTINE INDUSTRIAL FLUE PLUME",
+          hazard_tier: fire.is_emergency ? "CRITICAL THERMAL ANOMALY" : "ROUTINE INDUSTRIAL FLUE PLUME",
           downwind_trajectory_bearing: `${((fire.wind_direction_deg || 235) + 180) % 360}°`,
           wind_speed: `${fire.wind_speed_kmh || 18.0} km/h`,
           toxic_plume_corridor_length: `${fire.hazard_radius_km * 3.5} km`,
           evacuation_zone_radius: `${fire.hazard_radius_km} km`,
           public_warning_statement: fire.actionable_sop
         },
-        tactical_response_plan: {
+        incident_response_considerations: {
           standard_operating_procedure: fire.actionable_sop,
           immediate_actions: [
             "1. Establish incident command post upwind of coordinates.",

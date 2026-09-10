@@ -3,105 +3,92 @@
 @tailwind utilities;
 
 @layer utilities {
+  .obs-panel {
+    background: #10151b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .obs-panel-secondary {
+    background: #151b22;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
   .glass-panel {
-    background: rgba(15, 23, 42, 0.82);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(51, 65, 85, 0.55);
+    background: rgba(16, 21, 27, 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .glass-panel-glow-red {
-    background: rgba(23, 14, 20, 0.88);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(239, 68, 68, 0.55);
-    box-shadow: 0 0 25px -5px rgba(239, 68, 68, 0.35);
-  }
-
-  .glass-panel-glow-blue {
-    background: rgba(12, 22, 38, 0.88);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(56, 189, 248, 0.5);
-    box-shadow: 0 0 25px -5px rgba(56, 189, 248, 0.25);
+  .glass-panel-critical {
+    background: rgba(24, 18, 22, 0.96);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.6);
   }
 }
 
-/* Custom Tactical Keyframes */
-@keyframes pulse-red {
-  0% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8);
-    transform: scale(0.95);
+/* Subtle, state-focused micro-animations */
+@keyframes soft-pulse-red {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  70% {
-    box-shadow: 0 0 0 18px rgba(239, 68, 68, 0);
-    transform: scale(1.05);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-    transform: scale(0.95);
+  50% {
+    opacity: 0.6;
+    transform: scale(1.08);
   }
 }
 
-@keyframes pulse-orange {
-  0% {
-    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+@keyframes soft-pulse-amber {
+  0%, 100% {
+    opacity: 1;
   }
-  70% {
-    box-shadow: 0 0 0 12px rgba(249, 115, 22, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  50% {
+    opacity: 0.5;
   }
 }
 
-@keyframes radar-sweep {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+.marker-pulse-critical {
+  animation: soft-pulse-red 2.4s ease-in-out infinite;
 }
 
-.pulse-ring-red {
-  animation: pulse-red 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+.status-pulse-live {
+  animation: soft-pulse-amber 3s ease-in-out infinite;
 }
 
-.pulse-ring-orange {
-  animation: pulse-orange 2.2s infinite cubic-bezier(0.66, 0, 0, 1);
-}
-
-/* Custom Tactical Scrollbar */
+/* Clean Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0b0f19;
+  background: #0d1217;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #242c37;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #374354;
 }
 
-/* Leaflet Overrides for Dark Mode */
+/* Leaflet Overrides for Dark GIS Basemap */
 .leaflet-container {
-  background-color: #080c14 !important;
+  background-color: #080b0f !important;
   font-family: inherit;
 }
 .leaflet-bar a {
-  background-color: #0f172a !important;
+  background-color: #151b22 !important;
   color: #94a3b8 !important;
-  border-color: #334155 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 .leaflet-bar a:hover {
-  background-color: #1e293b !important;
+  background-color: #1e2631 !important;
   color: #38bdf8 !important;
 }
 .leaflet-control-attribution {
-  background-color: rgba(11, 15, 25, 0.75) !important;
+  background-color: rgba(13, 18, 23, 0.8) !important;
   color: #64748b !important;
   font-size: 10px !important;
 }
