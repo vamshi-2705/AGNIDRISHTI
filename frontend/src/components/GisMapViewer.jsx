@@ -37,25 +37,35 @@ function getClassificationColor(fire) {
 }
 
 function hexToRgba(hex, alpha) {
-  let r = 239, g = 68, b = 68;
-  if (hex === '#ef4444') { r = 239; g = 68; b = 68; }
-  else if (hex === '#f97316') { r = 249; g = 115; b = 22; }
-  else if (hex === '#eab308') { r = 234; g = 179; b = 8; }
-  else if (hex === '#10b981') { r = 16; g = 185; b = 129; }
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  if (!hex) return `rgba(239, 68, 68, ${alpha})`;
+  let cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 3) {
+    cleanHex = cleanHex.split('').map(c => c + c).join('');
+  }
+  if (cleanHex.length === 6) {
+    const num = parseInt(cleanHex, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(239, 68, 68, ${alpha})`;
 }
 
 function getThermalIntensityTier(fire) {
   const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
+  const ratio = fire.anomaly_ratio || 1.0;
+  const threat = fire.threat_level?.toUpperCase();
   const frp = fire.frp || 20;
 
-  if (isEmergency || frp >= 180) {
+  // Prefer anomaly_ratio and existing severity over absolute FRP
+  if (isEmergency || threat === 'CRITICAL' || ratio >= 4.0) {
     return 'critical';
   }
-  if (frp >= 80) {
+  if (threat === 'HIGH' || ratio >= 2.0 || (fire.is_industrial && ratio >= 1.5) || frp >= 100) {
     return 'high';
   }
-  if (frp >= 30) {
+  if (threat === 'MODERATE' || threat === 'EVALUATED' || ratio >= 1.2 || fire.category === 'PERSISTENT_INDUSTRIAL_FLARE' || fire.category === 'COAL_MINING_FIRE' || frp >= 35) {
     return 'moderate';
   }
   return 'low';
@@ -63,56 +73,41 @@ function getThermalIntensityTier(fire) {
 
 function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
-  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
   const tier = getThermalIntensityTier(fire);
 
-  // Intensity-based visual scaling with diminishing returns (capped at 0.45 glow)
+  // Core dot size: low (7px), moderate (8px), high (9.5px), critical (11px)
   let coreSize = 7;
-  let glowAlpha = 0.15;
-  let glowBlur = '5px';
-  let glowSpread = '1px';
-  let containerSize = 20;
+  let containerSize = 22;
 
   if (tier === 'critical') {
-    coreSize = isSelected ? 12 : 9.5;
-    glowAlpha = 0.45; // Capped max glow
-    glowBlur = '12px';
-    glowSpread = '2.5px';
-    containerSize = isSelected ? 32 : 24;
+    coreSize = isSelected ? 13 : 11;
+    containerSize = isSelected ? 34 : 28;
   } else if (tier === 'high') {
-    coreSize = isSelected ? 10.5 : 8.5;
-    glowAlpha = 0.35;
-    glowBlur = '9px';
-    glowSpread = '2px';
-    containerSize = isSelected ? 30 : 22;
+    coreSize = isSelected ? 11.5 : 9.5;
+    containerSize = isSelected ? 30 : 24;
   } else if (tier === 'moderate') {
-    coreSize = isSelected ? 9.5 : 7.5;
-    glowAlpha = 0.25;
-    glowBlur = '7px';
-    glowSpread = '1.5px';
-    containerSize = isSelected ? 28 : 20;
+    coreSize = isSelected ? 10 : 8;
+    containerSize = isSelected ? 28 : 22;
   } else {
     // low
-    coreSize = isSelected ? 8 : 6.5;
-    glowAlpha = 0.15;
-    glowBlur = '5px';
-    glowSpread = '1px';
-    containerSize = isSelected ? 26 : 18;
+    coreSize = isSelected ? 9 : 7;
+    containerSize = isSelected ? 26 : 20;
   }
 
-  const glowBoxShadow = `0 0 0 1px rgba(0,0,0,0.85), 0 0 ${glowBlur} ${glowSpread} ${hexToRgba(color, glowAlpha)}`;
-
-  // Selected hotspot: distinct concentric white target ring + clear center point
-  // Only selected or critical markers have subtle emphasis motion; low/moderate/high unselected are clean & static
+  // Markers use CSS classes: .thermal-dot-low, .thermal-dot-moderate, .thermal-dot-high, .thermal-dot-critical
+  // COLOR = Classification (Red/Orange/Amber/Green), GLOW INTENSITY = Severity (Static -> Breathe -> Pulse -> Beacon)
   const innerHtml = `
-    <div class="relative flex items-center justify-center w-full h-full">
-      ${(isEmergency || isSelected) ? `
-        <span class="absolute rounded-full marker-beacon-critical" style="width: ${containerSize}px; height: ${containerSize}px; background-color: ${hexToRgba(color, 0.18)};"></span>
+    <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color};">
+      ${tier === 'critical' ? `
+        <span class="absolute rounded-full thermal-dot-critical-ring pointer-events-none" style="width: ${coreSize * 2.2}px; height: ${coreSize * 2.2}px; background-color: ${hexToRgba(color, 0.28)};"></span>
+      ` : ''}
+      ${tier === 'high' ? `
+        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize * 1.8}px; height: ${coreSize * 1.8}px; background-color: ${hexToRgba(color, 0.14)}; filter: blur(2px);"></span>
       ` : ''}
       ${isSelected ? `
-        <span class="absolute rounded-full" style="width: ${coreSize + 8}px; height: ${coreSize + 8}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.45);"></span>
+        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 8}px; height: ${coreSize + 8}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.5);"></span>
       ` : ''}
-      <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || isEmergency ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.8)'}; box-shadow: ${glowBoxShadow};"></span>
+      <span class="relative rounded-full thermal-dot-${tier}" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || tier === 'critical' ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.85)'};"></span>
     </div>
   `;
 
@@ -156,7 +151,7 @@ export default function GisMapViewer({
 
         <MapCameraController selectedFire={selectedFire} />
 
-        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Subtle dashed perimeter) */}
+        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Neutral Gray/White Dashed Boundary) */}
         {facilities?.features?.map((fac) => {
           const coords = fac.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
           const props = fac.properties;
@@ -171,11 +166,11 @@ export default function GisMapViewer({
               key={fac.id || props.facility_id}
               positions={coords}
               pathOptions={{
-                color: isSelectedFacility ? '#f1f5f9' : '#94a3b8',
-                weight: isSelectedFacility ? 1.8 : 1.0,
+                color: isSelectedFacility ? 'rgba(255, 255, 255, 0.85)' : 'rgba(148, 163, 184, 0.45)',
+                weight: isSelectedFacility ? 1.5 : 1.0,
                 dashArray: '4, 4',
-                fillColor: isSelectedFacility ? '#cbd5e1' : '#64748b',
-                fillOpacity: isSelectedFacility ? 0.12 : 0.03
+                fillColor: isSelectedFacility ? 'rgba(255, 255, 255, 0.08)' : 'rgba(148, 163, 184, 0.03)',
+                fillOpacity: isSelectedFacility ? 0.08 : 0.02
               }}
             >
               <Tooltip sticky>
@@ -258,12 +253,17 @@ export default function GisMapViewer({
         })}
       </MapContainer>
 
-      {/* Clean Map Symbology Legend (Requested Format) */}
-      <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1017]/92 border border-white/[0.08] rounded-lg p-3 text-xs shadow-xl backdrop-blur-md text-slate-300 select-none font-sans">
-        <div className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] mb-2">
-          Map Symbology
+      {/* Map Symbology Legend: Explaining Color = Classification, Intensity = Severity */}
+      <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1017]/92 border border-white/[0.08] rounded-lg p-3 text-xs shadow-xl backdrop-blur-md text-slate-300 select-none font-sans max-w-[250px]">
+        <div className="font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-2 flex items-center justify-between">
+          <span>Map Symbology</span>
         </div>
-        <div className="space-y-1.5 text-[11px]">
+
+        {/* 1. Dot Color = Classification */}
+        <div className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 border-b border-white/[0.06] pb-1">
+          Dot Color = Classification
+        </div>
+        <div className="space-y-1 text-[10.5px]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow-sm"></span>
             <span>Industrial Fire</span>
@@ -280,10 +280,35 @@ export default function GisMapViewer({
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
             <span>Agricultural / Forest</span>
           </div>
-          <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06] mt-1">
-            <span className="w-3.5 h-2 border border-slate-400 border-dashed bg-slate-700/20 inline-block rounded-xs"></span>
-            <span className="text-slate-400 font-mono text-[10.5px]">Industrial Facility</span>
+        </div>
+
+        {/* 2. Dot Intensity = Thermal Severity */}
+        <div className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider mt-2.5 mb-1.5 border-b border-white/[0.06] pb-1">
+          Dot Intensity = Thermal Severity
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shadow-[0_0_3px_#94a3b8]"></span>
+            <span>Low: Static</span>
           </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_5px_#f97316]"></span>
+            <span>Mod: Breathe</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_8px_#f97316]"></span>
+            <span>High: Pulse</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
+            <span>Crit: Beacon</span>
+          </div>
+        </div>
+
+        {/* 3. Neutral Boundary */}
+        <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
+          <span className="w-3.5 h-2 border border-slate-400 border-dashed bg-white/[0.04] inline-block rounded-xs"></span>
+          <span className="text-slate-400 font-mono text-[10px]">Industrial Facility (OSM)</span>
         </div>
       </div>
     </div>

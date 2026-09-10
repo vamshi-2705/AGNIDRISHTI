@@ -140,24 +140,75 @@
    REFINED SATELLITE THERMAL HOTSPOT MARKER ANIMATIONS
    Clean, professional, non-gaming, restrained motion
    ======================================================= */
-@keyframes criticalBeacon {
-  0% {
+
+/* LOW: existing dot size, subtle static colored glow, no visible pulse */
+.thermal-dot-low {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 6px 1.5px var(--dot-color, #10b981);
+}
+
+/* MODERATE: existing dot, slightly stronger colored glow, very slow breathing animation (~3s) */
+@keyframes thermalBreatheModerate {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 6px 1.5px var(--dot-color, #f97316);
     transform: scale(1);
-    opacity: 0.35;
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 10px 2.5px var(--dot-color, #f97316);
+    transform: scale(1.06);
+  }
+}
+
+.thermal-dot-moderate {
+  animation: thermalBreatheModerate 3s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+/* HIGH: slightly larger dot, stronger colored glow, slow pulse (~2s), subtle outer halo */
+@keyframes thermalPulseHigh {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 8px 2px var(--dot-color, #f97316);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 0 14px 3.5px var(--dot-color, #f97316);
+    transform: scale(1.12);
+  }
+}
+
+.thermal-dot-high {
+  animation: thermalPulseHigh 2s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+/* CRITICAL: keep current critical marker appearance, strongest glow, subtle expanding/fading outer ring (~1.3–1.6s) */
+@keyframes criticalBeaconRing {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0.15;
   }
   100% {
-    transform: scale(1.6);
+    transform: scale(1.85);
     opacity: 0;
   }
 }
 
-.marker-beacon-critical {
-  animation: criticalBeacon 2.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+.thermal-dot-critical-ring {
+  animation: criticalBeaconRing 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
   will-change: transform, opacity;
 }
 
+.thermal-dot-critical {
+  box-shadow: 0 0 0 1.5px #ffffff, 0 0 12px 3px var(--dot-color, #ef4444), 0 0 18px 5px rgba(239, 68, 68, 0.45);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .marker-beacon-critical {
+  .thermal-dot-moderate,
+  .thermal-dot-high,
+  .thermal-dot-critical-ring {
     animation: none !important;
   }
 }
