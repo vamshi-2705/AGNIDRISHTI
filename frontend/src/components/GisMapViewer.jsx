@@ -53,21 +53,26 @@ function hexToRgba(hex, alpha) {
 }
 
 function getThermalIntensityTier(fire) {
-  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
-  const ratio = fire.anomaly_ratio || 1.0;
-  const threat = fire.threat_level?.toUpperCase();
+  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY' || fire.threat_level === 'CRITICAL';
+  const ratio = fire.anomaly_ratio != null ? Number(fire.anomaly_ratio) : 1.0;
   const frp = fire.frp || 20;
 
-  // Prefer anomaly_ratio and existing severity over absolute FRP
-  if (isEmergency || threat === 'CRITICAL' || ratio >= 4.0) {
+  // 1. CRITICAL: Emergency classification or anomaly_ratio >= 4.0
+  if (isEmergency || ratio >= 4.0) {
     return 'critical';
   }
-  if (threat === 'HIGH' || ratio >= 2.0 || (fire.is_industrial && ratio >= 1.5) || frp >= 100) {
+
+  // 2. HIGH: 2.2 <= ratio < 4.0 or threat HIGH or FRP >= 100
+  if (ratio >= 2.2 || fire.threat_level === 'HIGH' || frp >= 100) {
     return 'high';
   }
-  if (threat === 'MODERATE' || threat === 'EVALUATED' || ratio >= 1.2 || fire.category === 'PERSISTENT_INDUSTRIAL_FLARE' || fire.category === 'COAL_MINING_FIRE' || frp >= 35) {
+
+  // 3. MODERATE: 1.5 <= ratio < 2.2 or threat MODERATE or FRP >= 45
+  if (ratio >= 1.5 || fire.threat_level === 'MODERATE' || frp >= 45) {
     return 'moderate';
   }
+
+  // 4. LOW: ratio < 1.5
   return 'low';
 }
 
@@ -98,10 +103,10 @@ function createFireIcon(fire, isSelected) {
     containerSize = isSelected ? 24 : 20;
   }
 
-  // Markers use pure CSS keyframe animations: .thermal-dot-low, .thermal-dot-moderate, .thermal-dot-high, .thermal-dot-critical
+  // Data-driven Leaflet divIcon with attached intensity classes: thermal-dot thermal-dot-${tier}
   // COLOR = Event Classification (Red/Orange/Amber/Green), GLOW INTENSITY = Thermal Severity (Static -> Breathe -> Pulse -> Beacon)
   const innerHtml = `
-    <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color};">
+    <div class="relative flex items-center justify-center w-full h-full thermal-dot-wrapper thermal-dot-wrapper-${tier}" style="--dot-color: ${color}; color: ${color};">
       ${tier === 'critical' ? `
         <span class="absolute rounded-full thermal-dot-critical-ring pointer-events-none" style="width: ${coreSize * 1.6}px; height: ${coreSize * 1.6}px; background-color: ${hexToRgba(color, 0.28)};"></span>
       ` : ''}
@@ -111,12 +116,12 @@ function createFireIcon(fire, isSelected) {
       ${isSelected ? `
         <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 7}px; height: ${coreSize + 7}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.6);"></span>
       ` : ''}
-      <span class="relative rounded-full thermal-dot-${tier}" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || tier === 'critical' ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.85)'};"></span>
+      <span class="relative rounded-full thermal-dot thermal-dot-${tier}" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || tier === 'critical' ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.85)'};"></span>
     </div>
   `;
 
   return L.divIcon({
-    className: 'gis-thermal-hotspot-marker',
+    className: `gis-thermal-hotspot-marker thermal-marker-${tier}`,
     html: innerHtml,
     iconSize: [containerSize, containerSize],
     iconAnchor: [containerSize / 2, containerSize / 2],
