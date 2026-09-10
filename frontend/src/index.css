@@ -4,141 +4,123 @@
 
 @layer utilities {
   .obs-panel {
-    background: #10151b;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .obs-panel-secondary {
-    background: #151b22;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .obs-card {
-    background: #12171e;
+    background: #0d121a;
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
+  .obs-panel-secondary {
+    background: #111722;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .obs-card {
+    background: #111722;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
   .obs-card-selected {
-    background: #151c24;
-    border: 1px solid rgba(249, 115, 22, 0.45);
+    background: #161e2c;
+    border: 1px solid rgba(249, 115, 22, 0.5);
   }
 }
 
-/* Clean Custom Scrollbar */
+/* Professional Geospatial Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #080b0f;
+  background: #090d14;
 }
 ::-webkit-scrollbar-thumb {
-  background: #202731;
-  border-radius: 4px;
+  background: #1f2836;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333f4f;
+  background: #2d3a4d;
 }
 
 /* Leaflet Overrides for Dark GIS Basemap */
 .leaflet-container {
-  background-color: #080b0f !important;
+  background-color: #080b10 !important;
   font-family: inherit;
 }
 .leaflet-bar a {
-  background-color: #151b22 !important;
+  background-color: #121824 !important;
   color: #94a3b8 !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 .leaflet-bar a:hover {
-  background-color: #1e2631 !important;
-  color: #f5f5f5 !important;
+  background-color: #1a2232 !important;
+  color: #ffffff !important;
 }
 .leaflet-control-attribution {
-  background-color: rgba(8, 11, 15, 0.85) !important;
+  background-color: rgba(8, 12, 18, 0.85) !important;
   color: #64748b !important;
-  font-size: 10px !important;
+  font-size: 9.5px !important;
+  border-radius: 4px;
+  margin: 4px !important;
+  padding: 2px 6px !important;
 }
 .leaflet-control-attribution a {
   color: #94a3b8 !important;
 }
 
+/* Refined Dark Tooltip & Popup */
+.leaflet-tooltip {
+  background-color: rgba(11, 16, 23, 0.94) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(8px) !important;
+  padding: 6px 10px !important;
+}
+.leaflet-tooltip-top:before {
+  border-top-color: rgba(11, 16, 23, 0.94) !important;
+}
+.leaflet-tooltip-bottom:before {
+  border-bottom-color: rgba(11, 16, 23, 0.94) !important;
+}
+.leaflet-popup-content-wrapper {
+  background-color: rgba(11, 16, 23, 0.96) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(10px) !important;
+}
+.leaflet-popup-tip {
+  background-color: rgba(11, 16, 23, 0.96) !important;
+}
+
+/* Crisp Map Geography Enhancement */
+.leaflet-tile-pane {
+  filter: brightness(1.08) contrast(1.04);
+}
 
 /* =======================================================
-   INTENSITY-BASED THERMAL DOT ANIMATIONS (Professional GIS)
+   REFINED SATELLITE THERMAL HOTSPOT MARKER ANIMATIONS
+   Clean, professional, non-gaming, restrained motion
    ======================================================= */
-@keyframes thermalBreathe {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.08);
-    opacity: 1;
-  }
-}
-
-@keyframes thermalRingHigh {
+@keyframes criticalBeacon {
   0% {
     transform: scale(1);
-    opacity: 0.25;
+    opacity: 0.35;
   }
   100% {
-    transform: scale(1.5);
-    opacity: 0.02;
-  }
-}
-
-@keyframes thermalCoreCritical {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@keyframes thermalRingCritical {
-  0% {
-    transform: scale(1);
-    opacity: 0.30;
-  }
-  100% {
-    transform: scale(1.5);
+    transform: scale(1.6);
     opacity: 0;
   }
 }
 
-.thermal-pulse-moderate {
-  animation: thermalBreathe 2.8s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-.thermal-ring-high {
-  animation: thermalRingHigh 2.0s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
-  will-change: transform, opacity;
-}
-
-.thermal-core-critical {
-  animation: thermalCoreCritical 1.4s ease-in-out infinite;
-  will-change: transform;
-}
-
-.thermal-ring-critical {
-  animation: thermalRingCritical 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+.marker-beacon-critical {
+  animation: criticalBeacon 2.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thermal-pulse-moderate,
-  .thermal-ring-high,
-  .thermal-core-critical,
-  .thermal-ring-critical {
+  .marker-beacon-critical {
     animation: none !important;
   }
-}
-
-/* Point 1: Slightly brighten map geography (8-12% more readable, crisp borders/labels) */
-.leaflet-tile-pane {
-  filter: brightness(1.10) contrast(1.04);
 }

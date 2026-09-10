@@ -153,7 +153,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080b0f] text-slate-100 select-none">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#080b10] text-slate-100 select-none">
       {/* 1. Primary Navigation Header */}
       <TacticalNavbar
         summary={summary}

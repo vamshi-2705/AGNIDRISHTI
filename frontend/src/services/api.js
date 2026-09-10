@@ -156,7 +156,7 @@ export async function getIncidentReport(fireId) {
           evacuation_zone_radius: `${fire.hazard_radius_km} km`,
           public_warning_statement: fire.actionable_sop
         },
-        incident_response_considerations: {
+        tactical_response_plan: {
           standard_operating_procedure: fire.actionable_sop,
           immediate_actions: [
             "1. Establish incident command post upwind of coordinates.",

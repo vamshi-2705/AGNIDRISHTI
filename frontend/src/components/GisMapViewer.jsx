@@ -20,124 +20,71 @@ function MapCameraController({ selectedFire }) {
   return null;
 }
 
-
-/**
- * COLOR = WHAT TYPE? (Classification)
- */
 function getClassificationColor(fire) {
   if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
-    return '#ef4444'; // Red (Critical Emergency)
+    return '#ef4444'; // Red (Critical Industrial Emergency)
   }
   if (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE') {
-    return '#f97316'; // Orange (Operational Flare)
+    return '#f97316'; // Orange (Persistent Industrial Source)
   }
   if (fire.category === 'COAL_MINING_FIRE') {
     return '#eab308'; // Amber (Coal Seam Combustion)
   }
-  if (fire.category === 'AGRICULTURAL_STUBBLE') {
-    return '#22c55e'; // Green (Agricultural)
+  if (fire.category === 'AGRICULTURAL_STUBBLE' || fire.category === 'FOREST_FIRE') {
+    return '#10b981'; // Emerald (Natural / Biomass)
   }
-  if (fire.category === 'FOREST_FIRE') {
-    return '#10b981'; // Emerald (Forest)
-  }
-  return '#f97316';
-}
-
-/**
- * INTENSITY = HOW STRONG/ABNORMAL?
- * Derived from Anomaly Ratio, FRP, and Critical status
- * Levels: LOW, MODERATE, HIGH, CRITICAL
- */
-function getThermalIntensity(fire) {
-  if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY' || fire.threat_level === 'CRITICAL') {
-    return 'CRITICAL';
-  }
-  const ratio = fire.anomaly_ratio || (fire.frp && fire.baseline_frp_mw ? fire.frp / fire.baseline_frp_mw : 1.0);
-  const frp = fire.frp || 0;
-
-  if (ratio >= 2.5 || frp >= 150) {
-    return 'HIGH';
-  }
-  if (ratio >= 1.25 || frp >= 50) {
-    return 'MODERATE';
-  }
-  return 'LOW';
+  return '#10b981';
 }
 
 function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
-  const intensity = getThermalIntensity(fire);
+  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
 
-  let containerSize = 20;
+  let containerSize = 24;
   let coreSize = 8;
   let innerHtml = '';
 
-  const outlineStyle = isSelected 
-    ? 'border: 1.5px solid #ffffff; box-shadow: 0 0 0 2px rgba(255,255,255,0.4);' 
-    : 'border: 1px solid rgba(0,0,0,0.6);';
+  const selectedRingStyle = isSelected 
+    ? 'box-shadow: 0 0 0 2px #ffffff, 0 2px 8px rgba(0,0,0,0.8);' 
+    : 'box-shadow: 0 1px 3px rgba(0,0,0,0.6);';
 
-  if (intensity === 'CRITICAL') {
-    // CRITICAL: Strong red core + soft glow + single subtle expanding halo (No concentric radar rings)
-    containerSize = isSelected ? 40 : 34;
-    coreSize = isSelected ? 20 : 17;
-
-    innerHtml = `
-      <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Single subtle expanding/fading halo (1.5s, scale 1 -> 1.5, opacity 0.30 -> 0) -->
-        <span class="absolute w-full h-full rounded-full thermal-ring-critical" style="background-color: ${color};"></span>
-        
-        <!-- Strong red thermal core with soft red/orange glow ● -->
-        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 12px rgba(239,68,68,0.75), 0 0 4px rgba(249,115,22,0.5);"></span>
-      </div>
-    `;
-  } else if (intensity === 'HIGH') {
-    // HIGH: Solid core + stronger soft glow + single expanding halo ring
-    containerSize = isSelected ? 32 : 26;
+  if (isEmergency) {
+    // Critical: Clean red core + single subtle expanding beacon
+    containerSize = isSelected ? 34 : 28;
     coreSize = isSelected ? 16 : 13;
 
     innerHtml = `
       <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Expanding soft halo ring (2.0s) -->
-        <span class="absolute w-full h-full rounded-full thermal-ring-high" style="background-color: ${color}; opacity: 0.22;"></span>
-        
-        <!-- Solid core with stronger soft glow ● -->
-        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 9px ${color}90;"></span>
+        <!-- Single subtle expanding beacon (2.2s, non-gaming) -->
+        <span class="absolute w-full h-full rounded-full marker-beacon-critical" style="background-color: ${color};"></span>
+        <!-- Crisp solid core dot -->
+        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1.5px solid #ffffff; ${selectedRingStyle}"></span>
       </div>
     `;
-  } else if (intensity === 'MODERATE') {
-    // MODERATE: ·  ·  · (soft glow + breathing aura + core)
-    containerSize = isSelected ? 26 : 22;
-    coreSize = isSelected ? 13 : 11;
-    const auraSize = coreSize + 8;
+  } else if (fire.is_industrial) {
+    // Industrial flare / coal: Clean precise dot
+    containerSize = isSelected ? 26 : 20;
+    coreSize = isSelected ? 12 : 9;
 
     innerHtml = `
       <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Soft breathing ambient aura · · · -->
-        <span class="absolute rounded-full thermal-pulse-moderate" style="width: ${auraSize}px; height: ${auraSize}px; background-color: ${color}; opacity: 0.22; filter: blur(1.5px);"></span>
-        
-        <!-- Core dot with soft breathing glow ● -->
-        <span class="relative rounded-full thermal-pulse-moderate" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 6px ${color}80;"></span>
+        <span class="rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1px solid rgba(0,0,0,0.7); ${selectedRingStyle}"></span>
       </div>
     `;
   } else {
-    // LOW: ··· (very subtle glow, static clean dot)
-    containerSize = isSelected ? 20 : 16;
-    coreSize = isSelected ? 10 : 8;
-    const auraSize = coreSize + 4;
+    // Natural / Biomass: Small, precise, zero-noise dot
+    containerSize = isSelected ? 22 : 16;
+    coreSize = isSelected ? 10 : 7;
 
     innerHtml = `
       <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Very subtle glow aura ··· -->
-        <span class="absolute rounded-full" style="width: ${auraSize}px; height: ${auraSize}px; background-color: ${color}; opacity: 0.15; filter: blur(1px);"></span>
-        
-        <!-- Core dot ● -->
-        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 3px ${color}50;"></span>
+        <span class="rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1px solid rgba(0,0,0,0.6); ${selectedRingStyle}"></span>
       </div>
     `;
   }
 
   return L.divIcon({
-    className: 'gis-thermal-dot-marker',
+    className: 'gis-thermal-hotspot-marker',
     html: innerHtml,
     iconSize: [containerSize, containerSize],
     iconAnchor: [containerSize / 2, containerSize / 2],
@@ -155,7 +102,7 @@ export default function GisMapViewer({
   const center = [22.5937, 78.9629];
 
   return (
-    <div className="relative w-full h-full bg-[#080b0f] overflow-hidden">
+    <div className="relative w-full h-full bg-[#080b10] overflow-hidden select-none">
       <MapContainer
         center={center}
         zoom={5}
@@ -176,7 +123,7 @@ export default function GisMapViewer({
 
         <MapCameraController selectedFire={selectedFire} />
 
-        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Neutral slate/white dashed line) */}
+        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Subtle dashed perimeter) */}
         {facilities?.features?.map((fac) => {
           const coords = fac.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
           const props = fac.properties;
@@ -192,16 +139,16 @@ export default function GisMapViewer({
               positions={coords}
               pathOptions={{
                 color: isSelectedFacility ? '#f1f5f9' : '#94a3b8',
-                weight: isSelectedFacility ? 2 : 1.2,
-                dashArray: isSelectedFacility ? '6, 3' : '4, 4',
+                weight: isSelectedFacility ? 1.8 : 1.0,
+                dashArray: '4, 4',
                 fillColor: isSelectedFacility ? '#cbd5e1' : '#64748b',
-                fillOpacity: isSelectedFacility ? 0.14 : 0.04
+                fillOpacity: isSelectedFacility ? 0.12 : 0.03
               }}
             >
               <Tooltip sticky>
                 <div className="text-xs font-sans text-slate-100 p-1">
-                  <div className="font-semibold text-slate-300 font-mono text-[10px]">
-                    OSM INDUSTRIAL PERIMETER
+                  <div className="font-semibold text-slate-400 font-mono text-[10px]">
+                    INDUSTRIAL PERIMETER
                   </div>
                   <div className="font-medium text-slate-100 mt-0.5">{props.name}</div>
                   <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -221,16 +168,16 @@ export default function GisMapViewer({
               color: activePlume.properties?.stroke_color || '#ef4444',
               weight: 1.5,
               fillColor: activePlume.properties?.fill_color || '#ef4444',
-              fillOpacity: 0.22
+              fillOpacity: 0.20
             }}
           >
             <Popup>
               <div className="p-1 font-sans text-xs">
                 <div className="font-semibold text-red-300">
-                  {activePlume.properties?.hazard_tier || 'ESTIMATED DISPERSION CORRIDOR'}
+                  {activePlume.properties?.hazard_tier || 'ESTIMATED DOWNWIND DISPERSION'}
                 </div>
                 <div className="text-slate-300 mt-1 font-mono">
-                  Hazard Reach: <strong>{activePlume.properties?.hazard_length_km} km</strong>
+                  Reach: <strong>{activePlume.properties?.hazard_length_km} km</strong>
                 </div>
                 <div className="text-slate-400 text-[10px] font-mono">
                   Bearing: {activePlume.properties?.downwind_azimuth_deg}° • Wind: {activePlume.properties?.wind_speed_kmh} km/h
@@ -240,7 +187,7 @@ export default function GisMapViewer({
           </Polygon>
         )}
 
-        {/* Layer 3: Intensity-Based Thermal Dot Hotspot Markers */}
+        {/* Layer 3: Clean, Precise Thermal Hotspot Markers */}
         {fires.map((fire) => {
           const isSelected = selectedFire?.fire_id === fire.fire_id;
           const color = getClassificationColor(fire);
@@ -254,12 +201,12 @@ export default function GisMapViewer({
                 click: () => onSelectFire(fire)
               }}
             >
-              <Tooltip direction="top" offset={[0, -8]} opacity={0.96}>
-                <div className="text-xs text-slate-100 p-1 min-w-[200px] font-sans">
-                  <div className="flex items-center justify-between gap-1.5 font-semibold mb-0.5">
+              <Tooltip direction="top" offset={[0, -6]} opacity={0.96}>
+                <div className="text-xs text-slate-100 p-1 min-w-[190px] font-sans">
+                  <div className="flex items-center justify-between gap-2 font-semibold mb-0.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: color }}></span>
-                      <span className="font-mono">{fire.fire_id}</span>
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: color }}></span>
+                      <span className="font-mono text-[11px]">{fire.fire_id}</span>
                     </div>
                     <span className="text-orange-300 font-bold font-mono">{fire.frp} MW</span>
                   </div>
@@ -271,15 +218,6 @@ export default function GisMapViewer({
                   <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                     {fire.location?.formatted_coords || `${fire.latitude.toFixed(4)}° N, ${fire.longitude.toFixed(4)}° E`}
                   </div>
-
-                  <div className="text-[9px] text-slate-400 mt-1 pt-1 border-t border-white/[0.08] flex items-center justify-between">
-                    <span className="truncate max-w-[130px] text-slate-300">
-                      {fire.cause_analysis?.cause_title || fire.category}
-                    </span>
-                    <span className="text-slate-300 font-medium font-mono">
-                      {fire.anomaly_ratio ? `${fire.anomaly_ratio}x` : '1.0x'}
-                    </span>
-                  </div>
                 </div>
               </Tooltip>
             </Marker>
@@ -287,35 +225,27 @@ export default function GisMapViewer({
         })}
       </MapContainer>
 
-      {/* Map Symbology Legend: Intensity-Based Thermal Dots & Neutral Perimeter */}
-      <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1015]/90 border border-white/[0.08] rounded-md p-2.5 text-[11px] shadow-lg backdrop-blur-md text-slate-300 select-none font-sans">
-        <div className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] mb-1.5">
+      {/* Clean Map Symbology Legend (Requested Format) */}
+      <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1017]/92 border border-white/[0.08] rounded-lg p-3 text-xs shadow-xl backdrop-blur-md text-slate-300 select-none font-sans">
+        <div className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] mb-2">
           Map Symbology
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 text-[11px]">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-500 ring-2 ring-red-400/40 inline-block"></span>
-            <span>Critical Industrial</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"></span>
-            <span>Industrial Flare</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow-sm"></span>
+            <span>Industrial Fire</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
-            <span>Coal Combustion</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
+            <span>Persistent Industrial Source</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-            <span>Agricultural / Forest</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+            <span>Natural / Biomass</span>
           </div>
-          <div className="flex items-center gap-2 pt-1 border-t border-white/[0.08] mt-1">
-            <span className="w-3.5 h-1 border border-slate-400 border-dashed bg-slate-700/30 inline-block"></span>
-            <span className="text-slate-300 font-mono text-[10px]">OSM Industrial Perimeter</span>
-          </div>
-          <div className="pt-1.5 border-t border-white/[0.06] text-[9.5px] text-slate-400 space-y-0.5 font-sans">
-            <div><strong className="text-slate-300">Dot color</strong> = classification</div>
-            <div><strong className="text-slate-300">Dot intensity</strong> = thermal severity</div>
+          <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06] mt-1">
+            <span className="w-3.5 h-2 border border-slate-400 border-dashed bg-slate-700/20 inline-block rounded-xs"></span>
+            <span className="text-slate-400 font-mono text-[10.5px]">Industrial Facility</span>
           </div>
         </div>
       </div>
