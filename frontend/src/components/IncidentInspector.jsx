@@ -241,9 +241,9 @@ export default function IncidentInspector({
   const baselineY = svgHeight - padY - ((baselineFrp - minVal) / (maxVal - minVal)) * (svgHeight - padY * 2);
 
   return (
-    <aside className="absolute top-3 right-3 w-[370px] max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-xl shadow-2xl z-[1000] bg-[#0c1119]/96 backdrop-blur-md border border-white/[0.08] flex flex-col font-sans select-none text-slate-100">
+    <aside className="absolute top-3 right-3 w-[370px] max-h-[calc(100vh-5.5rem)] overflow-y-auto rounded-xl shadow-2xl z-[1000] glass-panel flex flex-col font-sans select-none text-slate-100">
       {/* 1. Header: Status, ID, Day/Night, Siren Toggle & Close */}
-      <div className="p-3.5 border-b border-white/[0.06] bg-[#0f1520] flex items-start justify-between">
+      <div className="p-3.5 glass-panel-header flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span

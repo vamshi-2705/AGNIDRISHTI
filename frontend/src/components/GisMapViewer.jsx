@@ -263,7 +263,7 @@ export default function GisMapViewer({
       </MapContainer>
 
       {/* Map Symbology Legend: Explaining Color = Classification, Intensity = Severity */}
-      <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1017]/92 border border-white/[0.08] rounded-lg p-3 text-xs shadow-xl backdrop-blur-md text-slate-300 select-none font-sans max-w-[250px]">
+      <div className="absolute bottom-4 left-[344px] z-[999] bg-[#0c1017]/92 border border-white/[0.08] rounded-lg p-3 text-xs shadow-xl backdrop-blur-md text-slate-300 select-none font-sans max-w-[250px]">
         <div className="font-semibold text-slate-300 uppercase tracking-wider text-[10px] mb-2 flex items-center justify-between">
           <span>Map Symbology</span>
         </div>

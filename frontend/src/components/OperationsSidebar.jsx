@@ -85,9 +85,9 @@ export default function OperationsSidebar({
   const emergencyCount = fires.filter(f => f.is_emergency).length;
 
   return (
-    <aside className="w-[305px] h-full bg-[#0c1119]/80 backdrop-blur-md border-r border-white/[0.08] flex flex-col shrink-0 z-20 select-none font-sans shadow-2xl">
+    <aside className="absolute top-3 left-3 bottom-3 w-[320px] max-h-[calc(100vh-5.5rem)] rounded-xl shadow-2xl z-[1000] flex flex-col font-sans select-none overflow-hidden glass-panel text-slate-100">
       {/* 1. Header: Events, Critical Counts & Filter Tabs */}
-      <div className="p-3 border-b border-white/[0.06] bg-[#0f1520]/80 backdrop-blur-md">
+      <div className="p-3 glass-panel-header shrink-0">
         <div className="flex items-center justify-between mb-2.5 text-xs">
           <div className="flex items-center gap-3">
             <div className="flex items-baseline gap-1.5">
@@ -109,12 +109,12 @@ export default function OperationsSidebar({
         </div>
 
         {/* Filter Tabs: ALL, INDUSTRIAL, CRITICAL */}
-        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-[#111622]/70 backdrop-blur-sm border border-white/[0.05] text-[11px] font-medium">
+        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-[#111622]/60 backdrop-blur-sm border border-white/[0.05] text-[11px] font-medium">
           <button
             onClick={() => setFilterMode('all')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'all'
-                ? 'bg-[#1a2436]/90 text-white shadow-sm font-semibold border border-white/[0.08]'
+                ? 'bg-white/[0.08] text-white shadow-sm font-semibold border border-white/[0.09]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -124,7 +124,7 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('industrial')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'industrial'
-                ? 'bg-[#1a2436]/90 text-orange-300 shadow-sm font-semibold border border-white/[0.08]'
+                ? 'bg-white/[0.08] text-orange-300 shadow-sm font-semibold border border-white/[0.09]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -134,7 +134,7 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('emergencies')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 ${
               filterMode === 'emergencies'
-                ? 'bg-red-950/80 text-red-300 shadow-sm font-semibold border border-red-800/40'
+                ? 'bg-red-950/70 text-red-300 shadow-sm font-semibold border border-red-800/40'
                 : 'text-slate-400 hover:text-red-300'
             }`}
           >
@@ -152,7 +152,7 @@ export default function OperationsSidebar({
               placeholder="Search ID, facility, district..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-[#111622]/70 backdrop-blur-sm border border-white/[0.06] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500"
+              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-[#111622]/60 backdrop-blur-sm border border-white/[0.07] text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-white/20 transition-colors"
             />
           </div>
 
@@ -160,7 +160,7 @@ export default function OperationsSidebar({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-[#111622]/70 backdrop-blur-sm border border-white/[0.06] text-[11px] text-slate-300 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
+              className="appearance-none bg-[#111622]/60 backdrop-blur-sm border border-white/[0.07] text-[11px] text-slate-300 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-white/20 cursor-pointer transition-colors"
             >
               <option value="frp">Max FRP</option>
               <option value="threat">Severity</option>
@@ -242,7 +242,7 @@ export default function OperationsSidebar({
       </div>
 
       {/* 3. Bottom Minimal Status Bar */}
-      <div className="px-3 py-2 bg-[#090d14]/85 backdrop-blur-md border-t border-white/[0.06] text-[10px] flex items-center justify-between text-slate-400 font-mono">
+      <div className="px-3 py-2 glass-panel-footer text-[10px] flex items-center justify-between text-slate-400 font-mono shrink-0">
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
           <span>STREAM: {isLive ? 'NASA VIIRS LIVE' : 'CALIBRATED BACKUP'}</span>

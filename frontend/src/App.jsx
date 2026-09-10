@@ -168,9 +168,20 @@ export default function App() {
         totalHotspots={fires.length}
       />
 
-      {/* 2. Main Body (Sidebar + GIS Map) */}
-      <div className="flex flex-1 relative overflow-hidden">
-        {/* Left Intelligence Operations Sidebar */}
+      {/* 2. Main Body (GIS Map with Floating Symmetrical Glass Panels) */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Full-bleed GIS Satellite Viewport */}
+        <div className="absolute inset-0">
+          <GisMapViewer
+            fires={fires}
+            facilities={facilities}
+            selectedFire={selectedFire}
+            onSelectFire={handleSelectFire}
+            activePlume={activePlume}
+          />
+        </div>
+
+        {/* Floating Left Events Sidebar */}
         <OperationsSidebar
           fires={fires}
           filterMode={filterMode}
@@ -181,32 +192,21 @@ export default function App() {
           loading={loading}
         />
 
-        {/* Main Center GIS Satellite Viewport */}
-        <main className="flex-1 relative h-full">
-          <GisMapViewer
-            fires={fires}
-            facilities={facilities}
-            selectedFire={selectedFire}
-            onSelectFire={handleSelectFire}
-            activePlume={activePlume}
+        {/* Floating Incident Inspector Drawer */}
+        {selectedFire && (
+          <IncidentInspector
+            fire={selectedFire}
+            onClose={() => {
+              alertSound.stopEmergencySiren();
+              setSelectedFire(null);
+              setActivePlume(null);
+            }}
+            onTogglePlume={handleTogglePlume}
+            isPlumeActive={!!activePlume}
+            onOpenReport={handleOpenReport}
+            plumeLoading={plumeLoading}
           />
-
-          {/* Floating Incident Inspector Drawer */}
-          {selectedFire && (
-            <IncidentInspector
-              fire={selectedFire}
-              onClose={() => {
-                alertSound.stopEmergencySiren();
-                setSelectedFire(null);
-                setActivePlume(null);
-              }}
-              onTogglePlume={handleTogglePlume}
-              isPlumeActive={!!activePlume}
-              onOpenReport={handleOpenReport}
-              plumeLoading={plumeLoading}
-            />
-          )}
-        </main>
+        )}
       </div>
 
       {/* 3. Executive NDRF Dossier Modal */}
