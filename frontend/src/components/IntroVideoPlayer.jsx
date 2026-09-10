@@ -81,7 +81,6 @@ export default function IntroVideoPlayer({ onComplete }) {
       {!hasError ? (
         <video
           ref={videoRef}
-          src="/videos/intro.mp4"
           autoPlay
           playsInline
           muted={isMuted}
@@ -89,7 +88,11 @@ export default function IntroVideoPlayer({ onComplete }) {
           onEnded={handleTransition}
           onError={() => setHasError(true)}
           className="w-full h-full object-cover"
-        />
+        >
+          <source src="/videos/intro.mp4" type="video/mp4" />
+          <source src="/videos/intro.mp4.mp4" type="video/mp4" />
+          <source src="/videos/intro.webm" type="video/webm" />
+        </video>
       ) : (
         /* Graceful Fallback if user hasn't added intro.mp4 yet */
         <div className="flex flex-col items-center justify-center p-8 max-w-lg text-center font-sans">

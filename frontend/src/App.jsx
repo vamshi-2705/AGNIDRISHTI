@@ -34,7 +34,9 @@ export default function App() {
     const syncViewWithHash = () => {
       if (window.location.hash === '#platform') {
         setCurrentView('platform');
-      } else {
+      } else if (window.location.hash === '#intro') {
+        setCurrentView('intro');
+      } else if (window.location.hash === '#landing') {
         setCurrentView('landing');
       }
     };
