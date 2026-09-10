@@ -179,15 +179,15 @@ export default function OperationsSidebar({
             let cardSurfaceStyle = '';
             if (isSelected) {
               if (isEmergency) {
-                cardSurfaceStyle = 'bg-[#191117]/92 backdrop-blur-md border-white/[0.16] border-l-red-500 shadow-lg shadow-black/40';
+                cardSurfaceStyle = 'bg-[#162032]/92 backdrop-blur-md border-white/[0.18] border-l-red-500 shadow-md shadow-black/40';
               } else {
-                cardSurfaceStyle = 'bg-[#131b28]/94 backdrop-blur-md border-white/[0.16] border-l-orange-500 shadow-lg shadow-black/40';
+                cardSurfaceStyle = 'bg-[#162032]/92 backdrop-blur-md border-white/[0.18] border-l-orange-500 shadow-md shadow-black/40';
               }
             } else {
               if (isEmergency) {
-                cardSurfaceStyle = 'bg-[#140e14]/70 backdrop-blur-sm border-white/[0.07] border-l-red-500/70 hover:bg-[#1a121a]/85 hover:border-white/[0.14] shadow-sm';
+                cardSurfaceStyle = 'bg-[#111622]/82 backdrop-blur-md border-white/[0.07] border-l-red-500/80 hover:bg-[#162032]/90 hover:border-white/[0.14] shadow-sm';
               } else {
-                cardSurfaceStyle = 'bg-[#0d131d]/70 backdrop-blur-sm border-white/[0.07] border-l-transparent hover:bg-[#121926]/85 hover:border-white/[0.14] shadow-sm';
+                cardSurfaceStyle = 'bg-[#111622]/82 backdrop-blur-md border-white/[0.07] border-l-transparent hover:bg-[#162032]/90 hover:border-white/[0.14] shadow-sm';
               }
             }
 
@@ -195,7 +195,7 @@ export default function OperationsSidebar({
               <div
                 key={fire.fire_id}
                 onClick={() => onSelectFire(fire)}
-                className={`p-3 rounded-xl border border-l-[3px] cursor-pointer transition-all duration-150 ${cardSurfaceStyle}`}
+                className={`p-3 rounded-lg border border-l-2 cursor-pointer transition-all duration-150 ${cardSurfaceStyle}`}
               >
                 {/* 1. Location (Primary) & Incident ID */}
                 <div className="flex items-start justify-between gap-2 mb-1">
