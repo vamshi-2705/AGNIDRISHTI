@@ -5,9 +5,9 @@ const PIPELINE_STAGES = [
   { id: 'detect', label: 'DETECT', context: 'NASA VIIRS', icon: Satellite },
   { id: 'context', label: 'CONTEXT', context: 'OSM + LULC', icon: MapPin },
   { id: 'analyze', label: 'ANALYZE', context: 'FRP Baseline', icon: Gauge },
-  { id: 'classify', label: 'CLASSIFY', context: 'Anomaly Engine', icon: Cpu },
+  { id: 'classify', label: 'CLASSIFY', context: 'Thermal Event', icon: Cpu },
   { id: 'assess', label: 'ASSESS', context: 'Dispersion Risk', icon: AlertTriangle },
-  { id: 'respond', label: 'RESPOND', context: 'Action Dossier', icon: ShieldCheck }
+  { id: 'respond', label: 'RESPOND', context: 'Incident Report', icon: ShieldCheck }
 ];
 
 export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
@@ -73,63 +73,68 @@ export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
         </button>
 
         {showSourcesModal && (
-          <div className="absolute right-0 top-9 w-76 bg-[#0e131b] border border-white/[0.08] rounded-lg shadow-2xl p-3.5 z-50 text-slate-200">
-            <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/[0.06]">
-              <span className="text-xs font-semibold text-white tracking-wide">
-                Integrated Data Sources
+          <div className="absolute right-0 top-9 w-72 bg-[#0e131b] border border-white/[0.08] rounded-lg shadow-2xl p-3 z-50 text-slate-200 font-sans">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
+              <span className="text-[11px] font-bold text-white tracking-wider uppercase font-mono">
+                DATA SOURCES
               </span>
               <button
                 onClick={() => setShowSourcesModal(false)}
                 className="text-slate-400 hover:text-white text-xs cursor-pointer p-0.5"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2 text-[11px]">
-              {/* NASA FIRMS */}
-              <div className="flex items-center justify-between p-2 rounded bg-[#131822] border border-white/[0.04]">
+            <div className="space-y-1.5 text-[11px]">
+              {/* NASA FIRMS / VIIRS */}
+              <div className="flex items-center justify-between p-1.5 px-2 rounded bg-[#131822] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-200">NASA FIRMS</div>
-                  <div className="text-[10px] text-slate-400">VIIRS 375m NRT Thermal</div>
+                  <div className="font-semibold text-slate-200 text-[11px]">NASA FIRMS / VIIRS</div>
+                  <div className="text-[10px] text-slate-400">Thermal observations</div>
                 </div>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                  isLive ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40' : 'bg-amber-950 text-amber-300 border border-amber-800/40'
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                  isLive ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40' : 'bg-amber-950/80 text-amber-300 border border-amber-800/40'
                 }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
                   {isLive ? 'LIVE' : 'FALLBACK'}
                 </span>
               </div>
 
               {/* OpenStreetMap */}
-              <div className="flex items-center justify-between p-2 rounded bg-[#131822] border border-white/[0.04]">
+              <div className="flex items-center justify-between p-1.5 px-2 rounded bg-[#131822] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-200">OpenStreetMap</div>
-                  <div className="text-[10px] text-slate-400">Overpass Industrial Context</div>
+                  <div className="font-semibold text-slate-200 text-[11px]">OpenStreetMap</div>
+                  <div className="text-[10px] text-slate-400">Industrial context</div>
                 </div>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/40">
-                  LIVE
-                </span>
-              </div>
-
-              {/* Open-Meteo */}
-              <div className="flex items-center justify-between p-2 rounded bg-[#131822] border border-white/[0.04]">
-                <div>
-                  <div className="font-medium text-slate-200">Open-Meteo</div>
-                  <div className="text-[10px] text-slate-400">Surface Wind Vectors (10m)</div>
-                </div>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/40">
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                   LIVE
                 </span>
               </div>
 
               {/* ESA WorldCover */}
-              <div className="flex items-center justify-between p-2 rounded bg-[#131822] border border-white/[0.04]">
+              <div className="flex items-center justify-between p-1.5 px-2 rounded bg-[#131822] border border-white/[0.04]">
                 <div>
-                  <div className="font-medium text-slate-200">ESA WorldCover</div>
-                  <div className="text-[10px] text-slate-400">10m Land-Use Classification</div>
+                  <div className="font-semibold text-slate-200 text-[11px]">ESA WorldCover</div>
+                  <div className="text-[10px] text-slate-400">Land-cover context</div>
                 </div>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-slate-800 text-slate-300 border border-white/[0.06]">
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-slate-800 text-slate-300 border border-white/[0.06]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                   BASELINE
+                </span>
+              </div>
+
+              {/* Open-Meteo */}
+              <div className="flex items-center justify-between p-1.5 px-2 rounded bg-[#131822] border border-white/[0.04]">
+                <div>
+                  <div className="font-semibold text-slate-200 text-[11px]">Open-Meteo</div>
+                  <div className="text-[10px] text-slate-400">Wind conditions</div>
+                </div>
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  LIVE
                 </span>
               </div>
             </div>

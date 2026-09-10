@@ -109,12 +109,12 @@ export default function OperationsSidebar({
         </div>
 
         {/* Filter Tabs: ALL, INDUSTRIAL, CRITICAL */}
-        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-[#111622]/60 backdrop-blur-sm border border-white/[0.05] text-[11px] font-medium">
+        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-white/[0.03] backdrop-blur-md border border-white/[0.08] text-[11px] font-medium shadow-inner">
           <button
             onClick={() => setFilterMode('all')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'all'
-                ? 'bg-white/[0.08] text-white shadow-sm font-semibold border border-white/[0.09]'
+                ? 'bg-white/[0.12] text-white shadow-sm font-semibold border border-white/[0.15]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -124,7 +124,7 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('industrial')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'industrial'
-                ? 'bg-white/[0.08] text-orange-300 shadow-sm font-semibold border border-white/[0.09]'
+                ? 'bg-white/[0.12] text-orange-300 shadow-sm font-semibold border border-white/[0.15]'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -134,11 +134,11 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('emergencies')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 ${
               filterMode === 'emergencies'
-                ? 'bg-red-950/70 text-red-300 shadow-sm font-semibold border border-red-800/40'
+                ? 'bg-red-950/80 text-red-200 shadow-sm font-semibold border border-red-700/50'
                 : 'text-slate-400 hover:text-red-300'
             }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
             CRITICAL ({emergencyCount})
           </button>
         </div>
@@ -146,13 +146,13 @@ export default function OperationsSidebar({
         {/* Search & Sort Controls */}
         <div className="mt-2.5 flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search ID, facility, district..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-[#111622]/60 backdrop-blur-sm border border-white/[0.07] text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-white/20 transition-colors"
+              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-white/[0.04] backdrop-blur-md border border-white/[0.09] text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-white/30 focus:bg-white/[0.07] transition-all"
             />
           </div>
 
@@ -160,12 +160,12 @@ export default function OperationsSidebar({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-[#111622]/60 backdrop-blur-sm border border-white/[0.07] text-[11px] text-slate-300 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-white/20 cursor-pointer transition-colors"
+              className="appearance-none bg-white/[0.04] backdrop-blur-md border border-white/[0.09] text-[11px] text-slate-200 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-white/30 focus:bg-white/[0.07] cursor-pointer transition-all"
             >
-              <option value="frp">Max FRP</option>
-              <option value="threat">Severity</option>
+              <option value="frp" className="bg-[#0b1017] text-slate-200">Max FRP</option>
+              <option value="threat" className="bg-[#0b1017] text-slate-200">Severity</option>
             </select>
-            <ArrowUpDown className="w-3 h-3 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ArrowUpDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
       </div>

@@ -1,9 +1,9 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Play } from 'lucide-react';
 import logoImg from './assets/logo.jpg';
 import heroBgImg from './assets/hero-bg.jpg';
 
-export default function LandingPage({ onOpenPlatform, onReplayIntro }) {
+export default function LandingPage({ onOpenPlatform, onPlayIntro }) {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#070a0e] text-white flex flex-col select-none font-sans">
       {/* 1. Top Navbar */}
@@ -35,25 +35,14 @@ export default function LandingPage({ onOpenPlatform, onReplayIntro }) {
           </div>
         </div>
 
-        {/* Top Right Action Buttons */}
-        <div className="flex items-center gap-2.5">
-          {onReplayIntro && (
-            <button
-              onClick={onReplayIntro}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-transparent hover:bg-white/[0.05] border border-transparent hover:border-white/[0.1] text-xs font-medium text-slate-400 hover:text-white transition-all cursor-pointer"
-              title="Replay Video Intro"
-            >
-              <span>Play Intro</span>
-            </button>
-          )}
-          <button
-            onClick={onOpenPlatform}
+        {/* Top Right Action Button */}
+        <button
+          onClick={onOpenPlatform}
           className="group relative inline-flex items-center gap-2.5 px-4 py-2 rounded-md bg-[#141920] hover:bg-[#1a222c] border border-white/[0.1] hover:border-slate-400 text-xs md:text-sm font-medium text-slate-200 hover:text-white transition-all duration-200 cursor-pointer shadow-sm"
         >
           <span>Open Platform</span>
           <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
         </button>
-        </div>
       </header>
 
       {/* 2. Main Hero Viewport */}
@@ -124,8 +113,8 @@ export default function LandingPage({ onOpenPlatform, onReplayIntro }) {
             Satellite-driven observations for detecting industrial fires, persistent thermal sources, and anomalous heat signatures across the Indian subcontinent.
           </p>
 
-          {/* Hero CTA Button */}
-          <div>
+          {/* Hero CTA Buttons */}
+          <div className="flex items-center gap-3.5 flex-wrap">
             <button
               onClick={onOpenPlatform}
               className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-md bg-[#131922] hover:bg-[#1a2330] border border-white/[0.1] hover:border-slate-400 text-sm md:text-base font-medium text-white transition-all duration-200 cursor-pointer shadow-md"
@@ -133,6 +122,16 @@ export default function LandingPage({ onOpenPlatform, onReplayIntro }) {
               <span>Explore AGNIDRISHTI</span>
               <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-white group-hover:translate-x-1 transition-transform" />
             </button>
+
+            {onPlayIntro && (
+              <button
+                onClick={onPlayIntro}
+                className="group inline-flex items-center gap-2 px-5 py-3 rounded-md bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.12] hover:border-white/[0.25] text-sm md:text-base font-medium text-slate-200 hover:text-white transition-all duration-200 cursor-pointer shadow-sm"
+              >
+                <Play className="w-4 h-4 text-orange-400 fill-orange-400 group-hover:scale-110 transition-transform" />
+                <span>Play Intro Video</span>
+              </button>
+            )}
           </div>
         </main>
 

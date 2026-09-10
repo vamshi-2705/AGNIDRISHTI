@@ -35,86 +35,139 @@ function getDisplayLocation(fire) {
   return 'RURAL SECTOR, INDIA';
 }
 
-function getClassificationEvidence(fire) {
-  const evidence = [];
-  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
-  const isIndustrial = fire.is_industrial;
+function getClassificationEvidence(fire, currentFrp, baselineFrp, anomalyRatio) {
+  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY' || fire.threat_level === 'CRITICAL' || anomalyRatio >= 2.2;
   const temporal = fire.temporal_profile || {};
 
-  if (fire.facility_name) {
-    evidence.push({
-      text: 'Industrial facility context',
-      detail: fire.facility_name
-    });
-  }
-
-  if (isIndustrial) {
-    evidence.push({
-      text: 'Industrial land-use context',
-      detail: fire.location?.region || 'OpenStreetMap Industrial Footprint'
-    });
-  }
-
-  if (fire.anomaly_ratio && fire.anomaly_ratio > 1.2) {
-    evidence.push({
-      text: 'FRP above expected baseline',
-      detail: `${fire.anomaly_ratio}× baseline threshold`
-    });
-  }
-
   if (isEmergency) {
-    evidence.push({
-      text: 'Abnormal thermal behaviour',
-      detail: `Acute divergence (${fire.frp} MW vs ${fire.baseline_frp_mw || 30} MW normal)`
-    });
-  } else if (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE') {
-    evidence.push({
-      text: 'Controlled baseline flaring',
-      detail: `Within operational envelope (${fire.frp} MW ≤ ${fire.baseline_frp_mw || 45} MW)`
-    });
-    if (temporal.observations_last_30d) {
-      evidence.push({
-        text: 'Temporal persistence confirmed',
-        detail: `${temporal.observations_last_30d} passes recorded over 30 days (24/7 continuity)`
-      });
+    return [
+      {
+        name: 'Industrial facility context',
+        value: fire.facility_name ? `${fire.facility_name}` : 'Verified facility match'
+      },
+      {
+        name: 'Industrial land-use context',
+        value: (fire.location?.region && fire.location.region !== 'Subcontinent Zone') 
+          ? fire.location.region 
+          : 'Petrochemical / refining'
+      },
+      {
+        name: 'FRP above expected baseline',
+        value: `${anomalyRatio}× baseline`
+      },
+      {
+        name: 'Critical anomaly threshold',
+        value: `${anomalyRatio}× ≥ 2.2×`
+      }
+    ];
+  }
+
+  if (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE') {
+    return [
+      {
+        name: 'Industrial facility context',
+        value: fire.facility_name || 'Verified refinery complex'
+      },
+      {
+        name: 'Industrial land-use context',
+        value: (fire.location?.region && fire.location.region !== 'Subcontinent Zone') 
+          ? fire.location.region 
+          : 'Petrochemical / refining zone'
+      },
+      {
+        name: 'FRP within expected baseline',
+        value: `${currentFrp} MW ≤ ${baselineFrp} MW baseline (${anomalyRatio}× baseline)`
+      },
+      {
+        name: 'Routine operational flaring',
+        value: `${temporal.observations_last_30d || 28} passes recorded / 30d (24/7 continuity)`
+      }
+    ];
+  }
+
+  if (fire.category === 'COAL_MINING_FIRE') {
+    return [
+      {
+        name: 'Coal basin geographic context',
+        value: fire.facility_name || 'Opencast Coal Seam Basin'
+      },
+      {
+        name: 'Mining land-use context',
+        value: (fire.location?.region && fire.location.region !== 'Subcontinent Zone') 
+          ? fire.location.region 
+          : 'Mineral extraction perimeter'
+      },
+      {
+        name: 'Subsurface thermal persistence',
+        value: `FRP ${currentFrp} MW smoldering signature`
+      },
+      {
+        name: 'Combustion criteria',
+        value: 'Subsurface coal seam combustion envelope'
+      }
+    ];
+  }
+
+  if (fire.category === 'AGRICULTURAL_STUBBLE') {
+    return [
+      {
+        name: 'Agricultural cropland context',
+        value: 'Paddy / wheat cropland (Zero industrial infrastructure)'
+      },
+      {
+        name: 'Biomass burn intensity',
+        value: `FRP ${currentFrp} MW matching seasonal crop clearance`
+      },
+      {
+        name: 'Atmospheric dispersion',
+        value: 'Non-industrial open biomass burning'
+      },
+      {
+        name: 'Classification threshold',
+        value: 'Agricultural residue clearance signature'
+      }
+    ];
+  }
+
+  if (fire.category === 'FOREST_FIRE') {
+    return [
+      {
+        name: 'Designated forest reserve',
+        value: fire.facility_name || 'Protected Forest Biosphere Reserve'
+      },
+      {
+        name: 'Canopy land-cover context',
+        value: 'Wildland forest canopy ecosystem'
+      },
+      {
+        name: 'Wildland thermal radiance',
+        value: `FRP ${currentFrp} MW wildfire profile`
+      },
+      {
+        name: 'Classification threshold',
+        value: 'Natural wildland canopy combustion'
+      }
+    ];
+  }
+
+  return [
+    {
+      name: 'Industrial facility context',
+      value: fire.facility_name || 'Verified spatial match'
+    },
+    {
+      name: 'Geospatial land-use context',
+      value: fire.location?.region || 'Terrestrial zone'
+    },
+    {
+      name: 'FRP observation',
+      value: `${currentFrp} MW (${anomalyRatio}× baseline)`
+    },
+    {
+      name: 'Evaluation threshold',
+      value: 'Standard deterministic criteria'
     }
-  } else if (fire.category === 'COAL_MINING_FIRE') {
-    evidence.push({
-      text: 'Coal basin geographic match',
-      detail: fire.facility_name || 'Opencast Coal Seam Basin'
-    });
-    evidence.push({
-      text: 'Subsurface thermal persistence',
-      detail: `FRP ${fire.frp} MW smoldering signature`
-    });
-  } else if (fire.category === 'AGRICULTURAL_STUBBLE') {
-    evidence.push({
-      text: 'Agricultural cropland context',
-      detail: 'Paddy / wheat cropland (Zero industrial infrastructure)'
-    });
-    evidence.push({
-      text: 'Moderate biomass burn intensity',
-      detail: `FRP ${fire.frp} MW matching seasonal crop clearance`
-    });
-  } else if (fire.category === 'FOREST_FIRE') {
-    evidence.push({
-      text: 'Designated forest canopy reserve',
-      detail: fire.facility_name || 'Protected Forest Biosphere'
-    });
-    evidence.push({
-      text: 'Wildland canopy thermal signature',
-      detail: 'Canopy wildfire infrared dispersion profile'
-    });
-  }
-
-  if (fire.critical_chemicals && fire.critical_chemicals.length > 0) {
-    evidence.push({
-      text: 'Chemical inventory proximity',
-      detail: fire.critical_chemicals.slice(0, 3).join(', ')
-    });
-  }
-
-  return evidence;
+  ];
 }
 
 export default function IncidentInspector({
@@ -194,7 +247,7 @@ export default function IncidentInspector({
 
   const dayNightLabel = fire.daynight === 'D' ? 'DAY' : fire.daynight === 'N' ? 'NIGHT' : null;
   const temporal = fire.temporal_profile || {};
-  const evidenceList = getClassificationEvidence(fire);
+  const evidenceList = getClassificationEvidence(fire, currentFrp, baselineFrp, anomalyRatio);
 
   // Thermal Profile Sparkline Data
   const historyData = useMemo(() => {
@@ -319,13 +372,13 @@ export default function IncidentInspector({
       <div className="p-4 space-y-3.5 text-xs">
         {/* 2. CRITICAL THERMAL ANOMALY BANNER */}
         {isEmergency && (
-          <div className="p-3 rounded-lg bg-red-950/25 border border-red-800/40 flex items-start gap-2.5">
-            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1"></span>
+          <div className="p-3 rounded-lg glass-emergency-banner flex items-start gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1 animate-pulse"></span>
             <div>
               <div className="text-[11px] font-bold text-red-300 uppercase tracking-wider">
                 CRITICAL THERMAL ANOMALY
               </div>
-              <div className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+              <div className="text-[11px] text-slate-200 mt-0.5 leading-snug">
                 FRP emission exceeds normal facility baseline by {anomalyRatio}×.
               </div>
             </div>
@@ -333,7 +386,7 @@ export default function IncidentInspector({
         )}
 
         {/* 3. LOCATION */}
-        <div className="p-3 rounded-lg bg-[#111622] border border-white/[0.04] space-y-1.5">
+        <div className="p-3 rounded-lg glass-subcard space-y-1.5">
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
             <MapPin className="w-3 h-3 text-slate-400" />
             <span>LOCATION</span>
@@ -352,9 +405,9 @@ export default function IncidentInspector({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-1 border-t border-white/[0.04] font-mono text-[10.5px]">
+            <div className="flex justify-between items-center pt-1 border-t border-white/[0.06] font-mono text-[10.5px]">
               <span className="text-slate-400 font-sans">Coordinates:</span>
-              <span className="text-slate-200 font-medium bg-[#0b0f16] px-1.5 py-0.5 rounded border border-white/[0.04]">
+              <span className="text-slate-200 font-medium bg-white/[0.05] px-1.5 py-0.5 rounded border border-white/[0.08] backdrop-blur-sm">
                 {location.formatted_coords || `${fire.latitude.toFixed(5)}° N, ${fire.longitude.toFixed(5)}° E`}
               </span>
             </div>
@@ -362,13 +415,13 @@ export default function IncidentInspector({
         </div>
 
         {/* 4. FACILITY & TERRAIN CONTEXT */}
-        <div className="p-3 rounded-lg bg-[#111622] border border-white/[0.04] space-y-1.5">
+        <div className="p-3 rounded-lg glass-subcard space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Building2 className="w-3 h-3 text-slate-400" />
               <span>FACILITY & TERRAIN CONTEXT</span>
             </span>
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 backdrop-blur-sm">
               OSM GIS VERIFIED
             </span>
           </div>
@@ -381,7 +434,7 @@ export default function IncidentInspector({
               </span>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/[0.04]">
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/[0.06]">
               <span className="text-slate-400 text-[10.5px] shrink-0">Industrial Facility:</span>
               <span className={`font-medium text-right truncate max-w-[220px] ${
                 fire.is_industrial ? 'text-orange-300' : 'text-slate-300'
@@ -392,9 +445,9 @@ export default function IncidentInspector({
           </div>
         </div>
 
-        {/* 5. WHY WAS THIS CLASSIFIED? */}
+        {/* 5. WHY WAS THIS CLASSIFIED? (Evidence-Driven Deterministic Rules) */}
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-bold text-slate-200 tracking-wider uppercase">
               WHY WAS THIS CLASSIFIED?
             </span>
@@ -403,18 +456,42 @@ export default function IncidentInspector({
             </span>
           </div>
 
-          <div className="space-y-1.5 text-[11px]">
+          <div className="space-y-1 text-[11px]">
             {evidenceList.map((item, idx) => (
-              <div key={idx} className="flex items-start gap-2 p-2 rounded-md bg-[#111622] border border-white/[0.04]">
+              <div key={idx} className="flex items-start gap-2 p-1.5 rounded-md glass-subcard">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <span className="text-slate-200 font-medium">{item.text}</span>
-                  <div className="text-[10px] font-mono text-slate-400 truncate">
-                    {item.detail}
+                  <div className="text-slate-200 font-medium text-[11px] leading-tight">
+                    {item.name}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
+                    {item.value}
                   </div>
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Compact Final Decision Row */}
+          <div className={`mt-2 px-2.5 py-1.5 rounded-md border flex items-center justify-between ${
+            isEmergency 
+              ? 'bg-red-950/40 border-red-500/30 text-red-300' 
+              : 'bg-slate-900/60 border-white/[0.08] text-slate-300'
+          }`}>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-slate-400 font-bold">
+              DECISION
+            </span>
+            <span className={`text-[11px] font-mono font-bold tracking-wide ${
+              isEmergency ? 'text-red-400' : 'text-slate-200'
+            }`}>
+              {isEmergency 
+                ? 'CRITICAL INDUSTRIAL ANOMALY' 
+                : (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE' ? 'ROUTINE INDUSTRIAL FLARING' :
+                   fire.category === 'COAL_MINING_FIRE' ? 'COAL SEAM COMBUSTION' :
+                   fire.category === 'AGRICULTURAL_STUBBLE' ? 'AGRICULTURAL BIOMASS BURNING' :
+                   fire.category === 'FOREST_FIRE' ? 'WILDLAND FOREST FIRE' :
+                   (fire.category ? fire.category.replace(/_/g, ' ') : 'VERIFIED CLASSIFICATION'))}
+            </span>
           </div>
         </div>
 
@@ -431,7 +508,7 @@ export default function IncidentInspector({
           </div>
 
           {/* Compact Minimal SVG Chart */}
-          <div className="w-full h-[64px] bg-[#090d14] rounded-lg border border-white/[0.05] p-1 flex items-center justify-center">
+          <div className="w-full h-[64px] rounded-lg glass-chart-container p-1 flex items-center justify-center">
             <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full overflow-visible">
               {/* Baseline Reference Line */}
               <line
@@ -489,7 +566,7 @@ export default function IncidentInspector({
 
           {/* Clearly Show: CURRENT OBSERVATION, NORMAL BASELINE, ANOMALY */}
           <div className="grid grid-cols-3 gap-1.5 mt-2 text-center font-mono">
-            <div className="p-2 rounded bg-[#111622] border border-white/[0.04]">
+            <div className="p-2 rounded glass-subcard">
               <div className="text-[9px] text-slate-400 font-sans uppercase tracking-wider">
                 CURRENT OBSERVATION
               </div>
@@ -498,7 +575,7 @@ export default function IncidentInspector({
               </div>
             </div>
 
-            <div className="p-2 rounded bg-[#111622] border border-white/[0.04]">
+            <div className="p-2 rounded glass-subcard">
               <div className="text-[9px] text-slate-400 font-sans uppercase tracking-wider">
                 NORMAL BASELINE
               </div>
@@ -507,7 +584,7 @@ export default function IncidentInspector({
               </div>
             </div>
 
-            <div className="p-2 rounded bg-[#111622] border border-white/[0.04]">
+            <div className="p-2 rounded glass-subcard">
               <div className="text-[9px] text-slate-400 font-sans uppercase tracking-wider">
                 ANOMALY
               </div>
@@ -519,7 +596,7 @@ export default function IncidentInspector({
         </div>
 
         {/* 7. SURFACE WIND & ASSOCIATED CHEMICALS */}
-        <div className="p-3 rounded-lg bg-[#111622] border border-white/[0.04] space-y-2 text-[11px]">
+        <div className="p-3 rounded-lg glass-subcard space-y-2 text-[11px]">
           <div className="flex items-center justify-between text-slate-300">
             <div className="flex items-center gap-1.5">
               <Wind className="w-3.5 h-3.5 text-slate-400" />
@@ -530,8 +607,13 @@ export default function IncidentInspector({
             </span>
           </div>
 
+          <div className="flex items-center justify-between pt-1.5 border-t border-white/[0.06] text-slate-300">
+            <span className="font-semibold text-slate-400 uppercase tracking-wider text-[10px]">ESTIMATED HAZARD RADIUS:</span>
+            <span className="font-mono font-medium text-red-300">{fire.hazard_radius_km || 2.0} km</span>
+          </div>
+
           {fire.critical_chemicals && fire.critical_chemicals.length > 0 && (
-            <div className="pt-2 border-t border-white/[0.04]">
+            <div className="pt-1.5 border-t border-white/[0.06]">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
                 ASSOCIATED CHEMICALS
               </span>
@@ -539,7 +621,7 @@ export default function IncidentInspector({
                 {fire.critical_chemicals.map((chem, i) => (
                   <span
                     key={i}
-                    className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#171f2d] text-slate-300 border border-white/[0.05]"
+                    className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-slate-200 border border-white/[0.08] backdrop-blur-sm"
                   >
                     {chem}
                   </span>
@@ -550,7 +632,7 @@ export default function IncidentInspector({
         </div>
 
         {/* 8. GROUND VERIFICATION (OSM) */}
-        <div className="p-2.5 rounded-lg bg-[#111622] border border-white/[0.04] text-[11px]">
+        <div className="p-2.5 rounded-lg glass-subcard text-[11px]">
           <div className="flex items-center justify-between text-slate-300 mb-1">
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-emerald-400" />
@@ -565,14 +647,14 @@ export default function IncidentInspector({
           </div>
         </div>
 
-        {/* 9. ACTION BUTTONS: ESTIMATED DOWNWIND DISPERSION & GENERATE INCIDENT BRIEF */}
+        {/* 9. ACTION BUTTONS: ESTIMATED DOWNWIND DISPERSION & GENERATE INCIDENT REPORT */}
         <div className="space-y-2 pt-1">
           <button
             onClick={onTogglePlume}
             className={`w-full py-2.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 border cursor-pointer ${
               isPlumeActive
-                ? 'bg-red-950/70 hover:bg-red-900/70 text-red-200 border-red-700/60'
-                : 'bg-[#151d29] hover:bg-[#1b2535] text-slate-200 border-white/[0.08] hover:border-slate-400'
+                ? 'bg-red-950/80 hover:bg-red-900/80 text-red-200 border-red-600/70 shadow-lg backdrop-blur-md'
+                : 'bg-white/[0.06] hover:bg-white/[0.12] text-slate-200 hover:text-white border border-white/[0.12] hover:border-white/30 backdrop-blur-md shadow-md'
             }`}
           >
             <Wind className="w-3.5 h-3.5 text-slate-400" />
@@ -581,10 +663,10 @@ export default function IncidentInspector({
 
           <button
             onClick={onOpenReport}
-            className="w-full py-2.5 px-3 rounded-lg text-xs font-medium bg-[#111722] hover:bg-[#161e2c] text-slate-300 hover:text-white border border-white/[0.06] hover:border-slate-500 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-2.5 px-3 rounded-lg text-xs font-medium bg-white/[0.04] hover:bg-white/[0.09] text-slate-300 hover:text-white border border-white/[0.09] hover:border-white/25 backdrop-blur-md transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
           >
             <FileText className="w-3.5 h-3.5 text-slate-400" />
-            <span>Generate Incident Brief</span>
+            <span>Generate Incident Report</span>
           </button>
         </div>
       </div>

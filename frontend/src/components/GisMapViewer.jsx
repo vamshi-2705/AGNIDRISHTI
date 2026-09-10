@@ -80,53 +80,92 @@ function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
   const tier = getThermalIntensityTier(fire);
 
-  // Core dot sizes per prompt specs:
-  // Low (6–9px -> 7.5px core, selected 9.5px)
-  // Moderate (8–11px -> 9px core, selected 11.5px)
-  // High (11–15px -> 12px core, selected 15px)
-  // Critical (16–20px -> 16px core, selected 19.5px)
-  let coreSize = 7.5;
-  let containerSize = 22;
+  const outlineStyle = isSelected 
+    ? 'border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.9);' 
+    : 'border: 1px solid rgba(0,0,0,0.65);';
 
   if (tier === 'critical') {
-    coreSize = isSelected ? 19.5 : 16;
-    containerSize = isSelected ? 42 : 36;
+    // CRITICAL: ONE thermal core with strongest glow + ONE soft expanding halo (non-targeting)
+    const containerSize = isSelected ? 42 : 36;
+    const coreSize = isSelected ? 16 : 13;
+
+    return L.divIcon({
+      className: 'gis-thermal-hotspot-marker',
+      html: `
+        <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color}; color: ${color};">
+          <!-- ONE soft expanding halo for high thermal intensity -->
+          <span class="absolute rounded-full thermal-halo-critical pointer-events-none" style="width: ${containerSize}px; height: ${containerSize}px; background-color: ${color};"></span>
+          
+          ${isSelected ? `
+            <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 8}px; height: ${coreSize + 8}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.8);"></span>
+          ` : ''}
+          
+          <!-- ONE solid thermal core with strongest glow -->
+          <span class="relative rounded-full thermal-core-critical" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1.5px solid #ffffff; box-shadow: 0 0 14px ${color}, 0 0 24px ${hexToRgba(color, 0.45)};"></span>
+        </div>
+      `,
+      iconSize: [containerSize, containerSize],
+      iconAnchor: [containerSize / 2, containerSize / 2],
+      popupAnchor: [0, -containerSize / 2]
+    });
   } else if (tier === 'high') {
-    coreSize = isSelected ? 15 : 12;
-    containerSize = isSelected ? 34 : 28;
+    // HIGH: stronger glow
+    const containerSize = isSelected ? 30 : 24;
+    const coreSize = isSelected ? 13 : 10.5;
+
+    return L.divIcon({
+      className: 'gis-thermal-hotspot-marker',
+      html: `
+        <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color}; color: ${color};">
+          ${isSelected ? `
+            <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 6}px; height: ${coreSize + 6}px; border: 1.5px solid #ffffff; box-shadow: 0 0 5px rgba(255,255,255,0.8);"></span>
+          ` : ''}
+          <span class="relative rounded-full thermal-pulse-high" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 10px ${color}, 0 0 18px ${hexToRgba(color, 0.35)};"></span>
+        </div>
+      `,
+      iconSize: [containerSize, containerSize],
+      iconAnchor: [containerSize / 2, containerSize / 2],
+      popupAnchor: [0, -containerSize / 2]
+    });
   } else if (tier === 'moderate') {
-    coreSize = isSelected ? 11.5 : 9;
-    containerSize = isSelected ? 28 : 24;
+    // MODERATE: soft glow
+    const containerSize = isSelected ? 26 : 20;
+    const coreSize = isSelected ? 11 : 9;
+
+    return L.divIcon({
+      className: 'gis-thermal-hotspot-marker',
+      html: `
+        <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color}; color: ${color};">
+          ${isSelected ? `
+            <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 6}px; height: ${coreSize + 6}px; border: 1.5px solid #ffffff; box-shadow: 0 0 5px rgba(255,255,255,0.8);"></span>
+          ` : ''}
+          <span class="relative rounded-full thermal-pulse-moderate" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 7px ${color}, 0 0 12px ${hexToRgba(color, 0.25)};"></span>
+        </div>
+      `,
+      iconSize: [containerSize, containerSize],
+      iconAnchor: [containerSize / 2, containerSize / 2],
+      popupAnchor: [0, -containerSize / 2]
+    });
   } else {
-    // low
-    coreSize = isSelected ? 9.5 : 7.5;
-    containerSize = isSelected ? 24 : 20;
+    // LOW: subtle glow
+    const containerSize = isSelected ? 22 : 16;
+    const coreSize = isSelected ? 9 : 7;
+
+    return L.divIcon({
+      className: 'gis-thermal-hotspot-marker',
+      html: `
+        <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color}; color: ${color};">
+          ${isSelected ? `
+            <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 5}px; height: ${coreSize + 5}px; border: 1.5px solid #ffffff; box-shadow: 0 0 5px rgba(255,255,255,0.8);"></span>
+          ` : ''}
+          <span class="relative rounded-full thermal-pulse-low" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 4px ${color}, 0 0 7px ${hexToRgba(color, 0.2)};"></span>
+        </div>
+      `,
+      iconSize: [containerSize, containerSize],
+      iconAnchor: [containerSize / 2, containerSize / 2],
+      popupAnchor: [0, -containerSize / 2]
+    });
   }
-
-  // Data-driven Leaflet divIcon with attached intensity classes: thermal-dot thermal-dot-${tier}
-  // COLOR = Event Classification (Red/Orange/Amber/Green), GLOW INTENSITY = Thermal Severity (Static -> Breathe -> Pulse -> Beacon)
-  const innerHtml = `
-    <div class="relative flex items-center justify-center w-full h-full thermal-dot-wrapper thermal-dot-wrapper-${tier}" style="--dot-color: ${color}; color: ${color};">
-      ${tier === 'critical' ? `
-        <span class="absolute rounded-full thermal-dot-critical-ring pointer-events-none" style="width: ${coreSize * 1.6}px; height: ${coreSize * 1.6}px; background-color: ${hexToRgba(color, 0.28)};"></span>
-      ` : ''}
-      ${tier === 'high' ? `
-        <span class="absolute rounded-full thermal-dot-high-halo pointer-events-none" style="width: ${coreSize * 1.5}px; height: ${coreSize * 1.5}px; background-color: ${hexToRgba(color, 0.2)};"></span>
-      ` : ''}
-      ${isSelected ? `
-        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 7}px; height: ${coreSize + 7}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.6);"></span>
-      ` : ''}
-      <span class="relative rounded-full thermal-dot thermal-dot-${tier}" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || tier === 'critical' ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.85)'};"></span>
-    </div>
-  `;
-
-  return L.divIcon({
-    className: `gis-thermal-hotspot-marker thermal-marker-${tier}`,
-    html: innerHtml,
-    iconSize: [containerSize, containerSize],
-    iconAnchor: [containerSize / 2, containerSize / 2],
-    popupAnchor: [0, -containerSize / 2]
-  });
 }
 
 export default function GisMapViewer({
@@ -213,10 +252,13 @@ export default function GisMapViewer({
                 <div className="font-semibold text-red-300">
                   {activePlume.properties?.hazard_tier || 'ESTIMATED DOWNWIND DISPERSION'}
                 </div>
-                <div className="text-slate-300 mt-1 font-mono">
-                  Reach: <strong>{activePlume.properties?.hazard_length_km} km</strong>
+                <div className="text-slate-300 mt-1 font-mono text-[11px]">
+                  Estimated Dispersion: <strong>{activePlume.properties?.hazard_length_km} km</strong>
                 </div>
-                <div className="text-slate-400 text-[10px] font-mono">
+                <div className="text-slate-300 font-mono text-[11px]">
+                  Estimated Hazard Radius: <strong className="text-red-400">{activePlume.properties?.evacuation_zone_radius_km || 2.0} km</strong>
+                </div>
+                <div className="text-slate-400 text-[10px] font-mono mt-0.5">
                   Bearing: {activePlume.properties?.downwind_azimuth_deg}° • Wind: {activePlume.properties?.wind_speed_kmh} km/h
                 </div>
               </div>
@@ -268,56 +310,36 @@ export default function GisMapViewer({
           <span>Map Symbology</span>
         </div>
 
-        {/* 1. Dot Color = Classification */}
-        <div className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 border-b border-white/[0.06] pb-1">
-          Dot Color = Classification
-        </div>
-        <div className="space-y-1 text-[10.5px]">
+
+        {/* 1. Classification & Corona Symbology */}
+        <div className="space-y-1.5 text-[11px]">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow-sm"></span>
+            <span className="w-3 h-3 rounded-full bg-red-500 ring-2 ring-red-400/50 inline-block"></span>
             <span>Critical Industrial</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
-            <span>Persistent Industrial Source</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-400 ring-2 ring-orange-400/40 inline-block"></span>
+            <span>Industrial Flare</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
-            <span>Coal / Mining</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-400/40 inline-block"></span>
+            <span>Coal Combustion</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/40 inline-block"></span>
             <span>Agricultural / Forest</span>
           </div>
         </div>
 
-        {/* 2. Dot Intensity = Thermal Severity */}
-        <div className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-wider mt-2.5 mb-1.5 border-b border-white/[0.06] pb-1">
-          Dot Intensity = Thermal Severity
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shadow-[0_0_3px_#94a3b8]"></span>
-            <span>Low: Static</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_5px_#f97316]"></span>
-            <span>Mod: Breathe</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_8px_#f97316]"></span>
-            <span>High: Pulse</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
-            <span>Crit: Beacon</span>
-          </div>
+        {/* 2. Neutral Boundary */}
+        <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
+          <span className="w-3.5 h-1 border border-slate-400 border-dashed bg-slate-700/30 inline-block"></span>
+          <span className="text-slate-400 font-mono text-[10px]">OSM Industrial Perimeter</span>
         </div>
 
-        {/* 3. Neutral Boundary */}
-        <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06] mt-2">
-          <span className="w-3.5 h-2 border border-slate-400 border-dashed bg-white/[0.04] inline-block rounded-xs"></span>
-          <span className="text-slate-400 font-mono text-[10px]">Industrial Facility (OSM)</span>
+        <div className="pt-2 border-t border-white/[0.06] mt-2 text-[10px] text-slate-400 font-sans">
+          <div><strong className="text-slate-300">Dot color</strong> = classification</div>
+          <div><strong className="text-slate-300">Glow intensity</strong> = thermal severity</div>
         </div>
       </div>
     </div>

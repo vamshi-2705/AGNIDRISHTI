@@ -71,54 +71,59 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
         </div>
       </div>
 
-      {/* CENTER / STATUS: NASA FIRMS • VIIRS, Observation time, Critical anomalies */}
+      {/* CENTER / STATUS: NASA FIRMS • VIIRS (Primary), Critical anomalies (Primary), Observation time (Secondary) */}
       <div className="hidden md:flex items-center gap-4 text-xs">
-        <div className="flex items-center gap-2 text-slate-300 font-normal">
+        <div className="flex items-center gap-2">
           <Satellite className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-          <span className="font-semibold text-white tracking-wide">NASA FIRMS • VIIRS</span>
+          <span className="font-bold text-white tracking-wide text-[12.5px]">NASA FIRMS • VIIRS</span>
           <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-          <span className="text-slate-600">•</span>
-          <span className="text-slate-400">Latest Observation:</span>
-          <span className="font-mono text-slate-200 text-[11px] font-medium">{lastUpdated}</span>
+          <span className="text-slate-600 ml-1">•</span>
+          <span className="text-[10px] text-slate-400 font-mono ml-0.5">
+            Latest Observation: <span className="text-slate-400">{lastUpdated}</span>
+          </span>
         </div>
 
         <span className="text-slate-700">|</span>
 
-        {/* CRITICAL ANOMALIES COUNT */}
-        <div className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${hasEmergencies ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-          <span className={`text-[11px] font-bold tracking-wider uppercase font-mono ${
-            hasEmergencies ? 'text-red-300' : 'text-slate-400'
-          }`}>
+        {/* PRIMARY: CRITICAL ANOMALIES COUNT */}
+        <div className={`flex items-center gap-2 px-2.5 py-1 rounded-md border font-mono ${
+          hasEmergencies
+            ? 'bg-red-950/60 border-red-700/50 text-red-300 shadow-sm'
+            : 'bg-slate-900/60 border-white/[0.06] text-slate-400'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${hasEmergencies ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+          <span className="text-[11px] font-bold tracking-wider uppercase">
             CRITICAL ANOMALIES: {emergencyCount}
           </span>
         </div>
       </div>
 
-      {/* RIGHT: Events count, Critical count, Current IST & UTC time */}
+      {/* RIGHT: Events count (Primary), Critical count (Primary), IST & UTC time (Secondary) */}
       <div className="flex items-center gap-4 text-xs">
-        <div className="hidden sm:flex items-center gap-3">
-          <div className="flex items-baseline gap-1.5 text-slate-400">
-            <span className="text-[11px] font-medium">Events:</span>
-            <span className="font-mono font-bold text-slate-100 text-[12px]">
+        <div className="hidden sm:flex items-center gap-3 font-mono">
+          <div className="flex items-baseline gap-1 px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.05]">
+            <span className="text-[10px] uppercase font-semibold text-slate-400 font-sans">EVENTS:</span>
+            <span className="font-bold text-white text-[12px]">
               {kpis.total_active_hotspots}
             </span>
           </div>
 
-          <div className="flex items-baseline gap-1.5 text-slate-400">
-            <span className="text-[11px] font-medium">Critical:</span>
-            <span className={`font-mono font-bold text-[12px] ${hasEmergencies ? 'text-red-400' : 'text-slate-200'}`}>
+          <div className={`flex items-baseline gap-1 px-2 py-0.5 rounded border ${
+            hasEmergencies ? 'bg-red-950/40 border-red-800/40' : 'bg-white/[0.03] border-white/[0.05]'
+          }`}>
+            <span className="text-[10px] uppercase font-semibold text-slate-400 font-sans">CRITICAL:</span>
+            <span className={`font-bold text-[12px] ${hasEmergencies ? 'text-red-400' : 'text-slate-300'}`}>
               {emergencyCount}
             </span>
           </div>
         </div>
 
-        {/* IST & UTC Clocks */}
-        <div className="flex items-center gap-2 px-3 py-1 rounded bg-[#111622] border border-white/[0.06] text-[11px] font-mono text-slate-300">
-          <Clock className="w-3.5 h-3.5 text-slate-500" />
-          <span>{istTime || 'IST'}</span>
+        {/* IST & UTC (Muted secondary timestamp) */}
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.03] border border-white/[0.06] font-mono">
+          <Clock className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-[11px] font-medium text-slate-200">{istTime || 'IST'}</span>
           <span className="text-slate-600">•</span>
-          <span className="text-slate-400">{utcTime || 'UTC'}</span>
+          <span className="text-[9.5px] text-slate-400">{utcTime || 'UTC'}</span>
         </div>
       </div>
     </header>

@@ -53,7 +53,7 @@ export default function NdrfDossierModal({ report, onClose }) {
           <div className="p-4 rounded-md bg-[#141a22] border border-white/[0.08] flex items-center justify-between">
             <div>
               <div className="text-[10px] font-mono uppercase text-slate-400 font-semibold tracking-wider">
-                EVENT CLASSIFICATION
+                EVENT ASSESSMENT
               </div>
               <div className="text-base font-bold text-white mt-0.5">
                 {summary.category || 'CRITICAL INDUSTRIAL EMERGENCY'}
@@ -108,7 +108,7 @@ export default function NdrfDossierModal({ report, onClose }) {
             </div>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between border-b border-white/[0.05] pb-1.5">
-                <span className="text-slate-400">Target Facility:</span>
+                <span className="text-slate-400">Affected Facility:</span>
                 <span className="font-medium text-slate-200">{facility.facility_name}</span>
               </div>
               <div className="flex justify-between border-b border-white/[0.05] pb-1.5">
@@ -134,7 +134,7 @@ export default function NdrfDossierModal({ report, onClose }) {
               <Wind className="w-3.5 h-3.5 text-slate-400" />
               <span>3. ESTIMATED DOWNWIND DISPERSION CORRIDOR</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px] font-mono mb-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px] font-mono mb-2">
               <div className="p-2 rounded bg-[#0b0e13] border border-white/[0.05]">
                 <span className="text-slate-500 block text-[10px]">DOWNWIND BEARING</span>
                 <strong className="text-slate-200">{dispersion.downwind_trajectory_bearing || '55.0° NE'}</strong>
@@ -144,8 +144,12 @@ export default function NdrfDossierModal({ report, onClose }) {
                 <strong className="text-slate-200">{dispersion.wind_speed || '24.5 km/h'}</strong>
               </div>
               <div className="p-2 rounded bg-[#0b0e13] border border-white/[0.05]">
-                <span className="text-slate-500 block text-[10px]">ESTIMATED PLUME REACH</span>
+                <span className="text-slate-500 block text-[10px]">ESTIMATED DISPERSION</span>
                 <strong className="text-orange-300">{dispersion.toxic_plume_corridor_length || '18.4 km'}</strong>
+              </div>
+              <div className="p-2 rounded bg-[#0b0e13] border border-white/[0.05]">
+                <span className="text-slate-500 block text-[10px]">ESTIMATED HAZARD RADIUS</span>
+                <strong className="text-red-400">{dispersion.evacuation_zone_radius || '5.0 km'}</strong>
               </div>
             </div>
             <p className="text-[11px] text-slate-300 bg-[#0b0e13] border border-white/[0.05] p-2 rounded">
@@ -153,11 +157,11 @@ export default function NdrfDossierModal({ report, onClose }) {
             </p>
           </div>
 
-          {/* Section 4: Incident Response Considerations */}
+          {/* Section 4: Actionable Decision Support */}
           <div className="border border-white/[0.08] rounded-md p-3.5 bg-[#12161d]">
             <div className="text-[11px] font-mono font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
-              <span>4. INCIDENT RESPONSE CONSIDERATIONS</span>
+              <span>4. ACTIONABLE DECISION SUPPORT</span>
             </div>
             <div className="space-y-2 text-[11px] text-slate-300">
               <p className="p-2 rounded bg-[#0b0e13] border border-white/[0.05] font-mono text-slate-200">

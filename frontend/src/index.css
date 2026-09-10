@@ -25,70 +25,113 @@
 }
 
 /* =======================================================
-   UNIFIED GLASS INFORMATION SURFACES (LEFT & RIGHT)
-   Cohesive glassmorphic design system matching the Incident Inspector
+   PREMIUM GLASSMORPHISM DESIGN SYSTEM (LEFT & RIGHT PANELS)
+   - Translucent frosted glass surfaces with high-blur depth
+   - Specular top rim light & subtle inner reflections
+   - True nested glass hierarchy for cards, inputs, and charts
    ======================================================= */
 .glass-panel {
-  background: rgba(10, 15, 23, 0.78) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  background: rgba(10, 15, 24, 0.65) !important;
+  backdrop-filter: blur(22px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 
+    0 24px 50px -12px rgba(0, 0, 0, 0.75), 
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.18), 
+    inset 0 0 20px 0 rgba(255, 255, 255, 0.015) !important;
 }
 
 .glass-panel-header {
-  background: rgba(15, 21, 32, 0.75) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: rgba(15, 22, 35, 0.55) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12) !important;
 }
 
 .glass-panel-footer {
-  background: rgba(9, 13, 20, 0.75) !important;
+  background: rgba(10, 15, 24, 0.60) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.glass-subcard {
+  background: rgba(255, 255, 255, 0.035) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.glass-subcard:hover {
+  background: rgba(255, 255, 255, 0.055) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.glass-emergency-banner {
+  background: rgba(60, 10, 16, 0.45) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border: 1px solid rgba(239, 68, 68, 0.40) !important;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+.glass-chart-container {
+  background: rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* =======================================================
    TRANSLUCENT INCIDENT CARDS (LEFT SIDEBAR)
-   Matches the subtle dark translucent surface & depth of
-   the right-side analysis inspector sections.
    ======================================================= */
 .incident-card-translucent {
-  background-color: rgba(15, 23, 42, 0.60) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: rgba(20, 28, 44, 0.42) !important;
+  backdrop-filter: blur(14px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-left: 2px solid transparent !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
-  transition: all 0.15s ease-in-out !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .incident-card-translucent:hover {
-  background-color: rgba(22, 32, 55, 0.75) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(30, 42, 65, 0.60) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
 }
 
 .incident-card-translucent.is-critical {
-  background-color: rgba(40, 10, 15, 0.60) !important;
-  border-color: rgba(239, 68, 68, 0.28) !important;
-  border-left: 2px solid rgba(239, 68, 68, 0.90) !important;
+  background: rgba(60, 12, 18, 0.45) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  border-left: 2.5px solid #ef4444 !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.incident-card-translucent.is-critical:hover {
+  background: rgba(80, 16, 24, 0.60) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.25) !important;
 }
 
 .incident-card-translucent.is-selected {
-  background-color: rgba(24, 34, 56, 0.82) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
-  border-left: 2px solid #f97316 !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  background: rgba(35, 50, 78, 0.70) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  border-left: 2.5px solid #f97316 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
 }
 
 .incident-card-translucent.is-selected.is-critical {
-  background-color: rgba(48, 14, 20, 0.80) !important;
-  border-color: rgba(239, 68, 68, 0.45) !important;
-  border-left: 2px solid #ef4444 !important;
+  background: rgba(75, 18, 26, 0.72) !important;
+  border-color: rgba(239, 68, 68, 0.65) !important;
+  border-left: 2.5px solid #ef4444 !important;
+  box-shadow: 0 8px 26px rgba(239, 68, 68, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
 }
 
 /* Professional Geospatial Scrollbar */
@@ -168,111 +211,111 @@
 
 /* =======================================================
    REFINED SATELLITE THERMAL HOTSPOT MARKER ANIMATIONS
-   Clean, professional, non-gaming, restrained motion
+   Scientific geospatial visualization:
+   - Dot color = classification
+   - Glow intensity = thermal severity
+   - Critical = strongest glow + ONE soft expanding halo (non-targeting)
    ======================================================= */
 
-/* =======================================================
-   DATA-DRIVEN THERMAL HOTSPOT MARKER INTENSITY CLASSES
-   Classification = Dot Color (Red/Orange/Amber/Green)
-   Thermal Severity = Glow Intensity & Motion (Low -> Mod -> High -> Crit)
-   ======================================================= */
-
-/* LOW: small core (6–9px), faint subtle glow, NO animation */
-.thermal-dot-low {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 4px currentColor, 0 0 7px var(--dot-color, currentColor);
+.gis-thermal-hotspot-marker {
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
 }
 
-/* MODERATE: basic core (8–11px), soft glow, slow breathing animation (~3s) */
-@keyframes thermalBreatheModerate {
+/* 1. Low: Subtle glow breathing pulse */
+@keyframes thermalPulseLow {
   0%, 100% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 5px currentColor, 0 0 10px var(--dot-color, currentColor);
     transform: scale(1);
     opacity: 0.85;
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 8px currentColor, 0 0 14px var(--dot-color, currentColor);
-    transform: scale(1.04);
+    transform: scale(1.05);
     opacity: 1;
+    filter: brightness(1.1);
   }
 }
 
-.thermal-dot-moderate {
-  animation: thermalBreatheModerate 3s ease-in-out infinite;
-  will-change: transform, opacity, box-shadow;
-}
-
-/* HIGH: slightly larger core (11–15px), stronger glow, gentle pulse (~2s), subtle halo */
-@keyframes thermalPulseHigh {
-  0%, 100% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 7px currentColor, 0 0 14px var(--dot-color, currentColor), 0 0 22px var(--dot-color, currentColor);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 0 10px currentColor, 0 0 18px var(--dot-color, currentColor), 0 0 28px var(--dot-color, currentColor);
-    transform: scale(1.08);
-  }
-}
-
-@keyframes thermalHighHalo {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.35;
-  }
-  50% {
-    transform: scale(1.4);
-    opacity: 0.05;
-  }
-}
-
-.thermal-dot-high {
-  animation: thermalPulseHigh 2s ease-in-out infinite;
-  will-change: transform, box-shadow;
-}
-
-.thermal-dot-high-halo {
-  animation: thermalHighHalo 2s ease-in-out infinite;
+.thermal-pulse-low {
+  animation: thermalPulseLow 3s ease-in-out infinite;
   will-change: transform, opacity;
 }
 
-/* CRITICAL: strongest core (16–20px), strongest glow, ONE expanding soft halo (~1.5s) */
-@keyframes criticalBeaconCore {
+/* 2. Moderate: Soft glow rhythmic pulse */
+@keyframes thermalPulseModerate {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 1.5px #ffffff, 0 0 12px currentColor, 0 0 22px var(--dot-color, currentColor), 0 0 32px var(--dot-color, currentColor);
+    opacity: 0.8;
   }
   50% {
-    transform: scale(1.06);
-    box-shadow: 0 0 0 1.5px #ffffff, 0 0 16px currentColor, 0 0 28px var(--dot-color, currentColor), 0 0 40px var(--dot-color, currentColor);
+    transform: scale(1.08);
+    opacity: 1;
+    filter: brightness(1.15);
   }
 }
 
-@keyframes criticalBeaconRing {
-  0% {
+.thermal-pulse-moderate {
+  animation: thermalPulseModerate 2.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* 3. High: Stronger glow rhythmic pulse */
+@keyframes thermalPulseHigh {
+  0%, 100% {
     transform: scale(1);
-    opacity: 0.35;
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+}
+
+.thermal-pulse-high {
+  animation: thermalPulseHigh 1.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* 4. Critical: Strongest glow core + ONE soft expanding halo */
+@keyframes thermalCoreCritical {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.12);
+    filter: brightness(1.3);
+  }
+}
+
+@keyframes thermalHaloCritical {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.55;
   }
   100% {
-    transform: scale(1.6);
+    transform: scale(1.65);
     opacity: 0;
   }
 }
 
-.thermal-dot-critical-ring {
-  animation: criticalBeaconRing 1.5s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+.thermal-core-critical {
+  animation: thermalCoreCritical 1.4s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+.thermal-halo-critical {
+  animation: thermalHaloCritical 1.8s ease-out infinite;
   will-change: transform, opacity;
 }
 
-.thermal-dot-critical {
-  animation: criticalBeaconCore 1.5s ease-in-out infinite;
-  will-change: transform, box-shadow;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .thermal-dot-moderate,
-  .thermal-dot-high,
-  .thermal-dot-high-halo,
-  .thermal-dot-critical,
-  .thermal-dot-critical-ring {
+  .thermal-pulse-low,
+  .thermal-pulse-moderate,
+  .thermal-pulse-high,
+  .thermal-core-critical,
+  .thermal-halo-critical {
     animation: none !important;
   }
 }

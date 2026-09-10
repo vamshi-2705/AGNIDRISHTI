@@ -6,7 +6,6 @@ import GisMapViewer from './components/GisMapViewer';
 import IncidentInspector from './components/IncidentInspector';
 import NdrfDossierModal from './components/NdrfDossierModal';
 import LandingPage from './LandingPage';
-import IntroVideoPlayer from './components/IntroVideoPlayer';
 import { alertSound } from './services/alertSound';
 import {
   getAnalyticsSummary,
@@ -17,7 +16,7 @@ import {
 } from './services/api';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState(() => (window.location.hash === '#platform' ? 'platform' : 'intro')); // 'intro' | 'landing' | 'platform'
+  const [currentView, setCurrentView] = useState('landing'); // 'landing' | 'platform'
   const [summary, setSummary] = useState(null);
   const [fires, setFires] = useState([]);
   const [facilities, setFacilities] = useState(null);
@@ -34,9 +33,7 @@ export default function App() {
     const syncViewWithHash = () => {
       if (window.location.hash === '#platform') {
         setCurrentView('platform');
-      } else if (window.location.hash === '#intro') {
-        setCurrentView('intro');
-      } else if (window.location.hash === '#landing') {
+      } else {
         setCurrentView('landing');
       }
     };
@@ -151,17 +148,8 @@ export default function App() {
 
   const activeEmergencies = fires.filter(f => f.is_emergency).length;
 
-  if (currentView === 'intro') {
-    return <IntroVideoPlayer onComplete={() => setCurrentView('landing')} />;
-  }
-
   if (currentView === 'landing') {
-    return (
-      <LandingPage 
-        onOpenPlatform={handleOpenPlatform} 
-        onReplayIntro={() => setCurrentView('intro')}
-      />
-    );
+    return <LandingPage onOpenPlatform={handleOpenPlatform} />;
   }
 
   return (
