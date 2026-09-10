@@ -176,54 +176,63 @@ export default function OperationsSidebar({
             const classificationLabel = getDisplayClassification(fire);
             const timeLabel = fire.acq_time ? (fire.acq_time.includes(':') ? fire.acq_time : `${fire.acq_time} UTC`) : '09:15 UTC';
 
+            let cardSurfaceStyle = '';
+            if (isSelected) {
+              if (isEmergency) {
+                cardSurfaceStyle = 'bg-[#191117]/92 backdrop-blur-md border-white/[0.16] border-l-red-500 shadow-lg shadow-black/40';
+              } else {
+                cardSurfaceStyle = 'bg-[#131b28]/94 backdrop-blur-md border-white/[0.16] border-l-orange-500 shadow-lg shadow-black/40';
+              }
+            } else {
+              if (isEmergency) {
+                cardSurfaceStyle = 'bg-[#140e14]/70 backdrop-blur-sm border-white/[0.07] border-l-red-500/70 hover:bg-[#1a121a]/85 hover:border-white/[0.14] shadow-sm';
+              } else {
+                cardSurfaceStyle = 'bg-[#0d131d]/70 backdrop-blur-sm border-white/[0.07] border-l-transparent hover:bg-[#121926]/85 hover:border-white/[0.14] shadow-sm';
+              }
+            }
+
             return (
               <div
                 key={fire.fire_id}
                 onClick={() => onSelectFire(fire)}
-                className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                  isSelected
-                    ? isEmergency
-                      ? 'bg-[#1a1215] border-l-[3px] border-l-red-500 border-white/[0.14] shadow-md'
-                      : 'bg-[#151c27] border-l-[3px] border-l-orange-500 border-white/[0.14] shadow-md'
-                    : 'bg-[#0f141d] border-l-[3px] border-l-transparent border-white/[0.04] hover:bg-[#131823] hover:border-white/[0.08]'
-                }`}
+                className={`p-3 rounded-xl border border-l-[3px] cursor-pointer transition-all duration-150 ${cardSurfaceStyle}`}
               >
-                {/* 1. Incident ID + Severity */}
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="font-mono text-[11px] font-bold text-slate-300">
+                {/* 1. Location (Primary) & Incident ID */}
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="text-[12px] font-bold text-slate-100 tracking-wide leading-tight truncate">
+                    {locationLabel}
+                  </div>
+                  <span className="font-mono text-[10px] text-slate-400 shrink-0 font-medium">
                     {fire.fire_id}
                   </span>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${
+                </div>
+
+                {/* 2. Classification & Severity */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-medium text-slate-300 tracking-wide truncate">
+                    {classificationLabel}
+                  </span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                     isEmergency ? 'text-red-400' : 'text-slate-400'
                   }`}>
                     {fire.threat_level || (isEmergency ? 'CRITICAL' : 'EVALUATED')}
                   </span>
                 </div>
 
-                {/* 2. Location */}
-                <div className="text-[12px] font-bold text-slate-100 tracking-wide truncate mb-1">
-                  {locationLabel}
-                </div>
-
-                {/* 3. Classification */}
-                <div className="text-[11px] font-medium text-slate-300 tracking-wide mb-2">
-                  {classificationLabel}
-                </div>
-
-                {/* 4. FRP, Anomaly / Baseline Ratio, VIIRS & Time */}
-                <div className="flex items-center justify-between pt-1.5 border-t border-white/[0.04] text-[10.5px] font-mono">
+                {/* 3. FRP, Anomaly / Baseline Ratio, VIIRS & Time */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[10.5px] font-mono">
                   <div className="flex items-baseline gap-1.5">
                     <span className={`font-bold ${
-                      isEmergency ? 'text-red-400 text-[12.5px]' : 'text-orange-400 text-[12.5px]'
+                      isEmergency ? 'text-red-400 text-[12px]' : 'text-orange-400 text-[12px]'
                     }`}>
                       {fire.frp} MW
                     </span>
-                    <span className="text-slate-400">
+                    <span className="text-slate-400 text-[10px]">
                       • {fire.anomaly_ratio ? `${fire.anomaly_ratio}× BASELINE` : '1.0× BASELINE'}
                     </span>
                   </div>
 
-                  <div className="text-slate-400 text-right">
+                  <div className="text-slate-400 text-[10px] shrink-0">
                     <span>VIIRS • {timeLabel}</span>
                   </div>
                 </div>

@@ -36,52 +36,85 @@ function getClassificationColor(fire) {
   return '#10b981';
 }
 
+function hexToRgba(hex, alpha) {
+  let r = 239, g = 68, b = 68;
+  if (hex === '#ef4444') { r = 239; g = 68; b = 68; }
+  else if (hex === '#f97316') { r = 249; g = 115; b = 22; }
+  else if (hex === '#eab308') { r = 234; g = 179; b = 8; }
+  else if (hex === '#10b981') { r = 16; g = 185; b = 129; }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getThermalIntensityTier(fire) {
+  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
+  const frp = fire.frp || 20;
+
+  if (isEmergency || frp >= 180) {
+    return 'critical';
+  }
+  if (frp >= 80) {
+    return 'high';
+  }
+  if (frp >= 30) {
+    return 'moderate';
+  }
+  return 'low';
+}
+
 function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
   const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
+  const tier = getThermalIntensityTier(fire);
 
-  let containerSize = 24;
-  let coreSize = 8;
-  let innerHtml = '';
+  // Intensity-based visual scaling with diminishing returns (capped at 0.45 glow)
+  let coreSize = 7;
+  let glowAlpha = 0.15;
+  let glowBlur = '5px';
+  let glowSpread = '1px';
+  let containerSize = 20;
 
-  const selectedRingStyle = isSelected 
-    ? 'box-shadow: 0 0 0 2px #ffffff, 0 2px 8px rgba(0,0,0,0.8);' 
-    : 'box-shadow: 0 1px 3px rgba(0,0,0,0.6);';
-
-  if (isEmergency) {
-    // Critical: Clean red core + single subtle expanding beacon
-    containerSize = isSelected ? 34 : 28;
-    coreSize = isSelected ? 16 : 13;
-
-    innerHtml = `
-      <div class="relative flex items-center justify-center w-full h-full">
-        <!-- Single subtle expanding beacon (2.2s, non-gaming) -->
-        <span class="absolute w-full h-full rounded-full marker-beacon-critical" style="background-color: ${color};"></span>
-        <!-- Crisp solid core dot -->
-        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1.5px solid #ffffff; ${selectedRingStyle}"></span>
-      </div>
-    `;
-  } else if (fire.is_industrial) {
-    // Industrial flare / coal: Clean precise dot
-    containerSize = isSelected ? 26 : 20;
-    coreSize = isSelected ? 12 : 9;
-
-    innerHtml = `
-      <div class="relative flex items-center justify-center w-full h-full">
-        <span class="rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1px solid rgba(0,0,0,0.7); ${selectedRingStyle}"></span>
-      </div>
-    `;
+  if (tier === 'critical') {
+    coreSize = isSelected ? 12 : 9.5;
+    glowAlpha = 0.45; // Capped max glow
+    glowBlur = '12px';
+    glowSpread = '2.5px';
+    containerSize = isSelected ? 32 : 24;
+  } else if (tier === 'high') {
+    coreSize = isSelected ? 10.5 : 8.5;
+    glowAlpha = 0.35;
+    glowBlur = '9px';
+    glowSpread = '2px';
+    containerSize = isSelected ? 30 : 22;
+  } else if (tier === 'moderate') {
+    coreSize = isSelected ? 9.5 : 7.5;
+    glowAlpha = 0.25;
+    glowBlur = '7px';
+    glowSpread = '1.5px';
+    containerSize = isSelected ? 28 : 20;
   } else {
-    // Natural / Biomass: Small, precise, zero-noise dot
-    containerSize = isSelected ? 22 : 16;
-    coreSize = isSelected ? 10 : 7;
-
-    innerHtml = `
-      <div class="relative flex items-center justify-center w-full h-full">
-        <span class="rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: 1px solid rgba(0,0,0,0.6); ${selectedRingStyle}"></span>
-      </div>
-    `;
+    // low
+    coreSize = isSelected ? 8 : 6.5;
+    glowAlpha = 0.15;
+    glowBlur = '5px';
+    glowSpread = '1px';
+    containerSize = isSelected ? 26 : 18;
   }
+
+  const glowBoxShadow = `0 0 0 1px rgba(0,0,0,0.85), 0 0 ${glowBlur} ${glowSpread} ${hexToRgba(color, glowAlpha)}`;
+
+  // Selected hotspot: distinct concentric white target ring + clear center point
+  // Only selected or critical markers have subtle emphasis motion; low/moderate/high unselected are clean & static
+  const innerHtml = `
+    <div class="relative flex items-center justify-center w-full h-full">
+      ${(isEmergency || isSelected) ? `
+        <span class="absolute rounded-full marker-beacon-critical" style="width: ${containerSize}px; height: ${containerSize}px; background-color: ${hexToRgba(color, 0.18)};"></span>
+      ` : ''}
+      ${isSelected ? `
+        <span class="absolute rounded-full" style="width: ${coreSize + 8}px; height: ${coreSize + 8}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.45);"></span>
+      ` : ''}
+      <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || isEmergency ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.8)'}; box-shadow: ${glowBoxShadow};"></span>
+    </div>
+  `;
 
   return L.divIcon({
     className: 'gis-thermal-hotspot-marker',
