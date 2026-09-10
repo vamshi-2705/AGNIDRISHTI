@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import TacticalNavbar from './components/TacticalNavbar';
+import IntelligencePipelineStrip from './components/IntelligencePipelineStrip';
 import OperationsSidebar from './components/OperationsSidebar';
 import GisMapViewer from './components/GisMapViewer';
 import IncidentInspector from './components/IncidentInspector';
@@ -159,6 +160,12 @@ export default function App() {
         isLive={isLive}
         activeEmergencyCount={activeEmergencies}
         onBackToLanding={handleBackToLanding}
+      />
+
+      {/* Operational Intelligence Pipeline & Data Sources Strip */}
+      <IntelligencePipelineStrip
+        isLive={isLive}
+        totalHotspots={fires.length}
       />
 
       {/* 2. Main Body (Sidebar + GIS Map) */}

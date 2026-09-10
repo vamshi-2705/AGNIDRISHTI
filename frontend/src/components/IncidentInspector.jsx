@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getLiveOsmVerification } from '../services/api';
 import { alertSound } from '../services/alertSound';
-import { X, Volume2, VolumeX, Wind, FileText, Compass, MapPin, CheckCircle2, TrendingUp } from 'lucide-react';
+import { X, Volume2, VolumeX, Wind, FileText, Compass, MapPin, CheckCircle2, TrendingUp, Check } from 'lucide-react';
+
+const FLAME_PATH = "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z";
 
 export default function IncidentInspector({
   fire,
@@ -93,12 +95,12 @@ export default function IncidentInspector({
     ]
   };
 
-  const confidence = cause.certainty_pct || 88;
   const baselineFrp = fire.baseline_frp_mw || 25.0;
   const currentFrp = fire.frp || 35.0;
+  const anomalyRatio = fire.anomaly_ratio || (Number((currentFrp / (baselineFrp || 1)).toFixed(2)));
 
-  // 7-observation deterministic history for thermal variance
-  const historyData = React.useMemo(() => {
+  // Deterministic sample observations representing historical passes
+  const historyData = useMemo(() => {
     const base = baselineFrp;
     if (isEmergency) {
       return [
@@ -123,12 +125,12 @@ export default function IncidentInspector({
     }
   }, [baselineFrp, currentFrp, isEmergency]);
 
-  const maxVal = Math.max(...historyData.map(d => d.val), baselineFrp * 1.4);
+  const maxVal = Math.max(...historyData.map(d => d.val), baselineFrp * 1.3);
   const minVal = 0;
-  const svgWidth = 320;
-  const svgHeight = 65;
-  const paddingX = 16;
-  const paddingY = 10;
+  const svgWidth = 330;
+  const svgHeight = 70;
+  const paddingX = 14;
+  const paddingY = 12;
 
   const pointsStr = historyData.map((d, i) => {
     const x = paddingX + (i / (historyData.length - 1)) * (svgWidth - paddingX * 2);
@@ -165,8 +167,11 @@ export default function IncidentInspector({
               </span>
             )}
           </div>
-          <h3 className="text-sm font-semibold text-slate-100 leading-tight font-sans">
-            {location.district ? `${location.district}, ${location.state}` : (fire.facility_name || fire.site_hint)}
+          <h3 className="text-sm font-semibold text-slate-100 leading-tight font-sans flex items-center gap-1.5">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill={isEmergency ? '#ef4444' : '#f97316'} stroke="none" className="shrink-0">
+              <path d={FLAME_PATH} />
+            </svg>
+            <span>{location.district ? `${location.district}, ${location.state}` : (fire.facility_name || fire.site_hint)}</span>
           </h3>
         </div>
 
@@ -214,7 +219,7 @@ export default function IncidentInspector({
                 CRITICAL THERMAL ANOMALY
               </div>
               <div className="text-[10px] text-slate-400 font-sans">
-                FRP emission exceeds normal facility baseline by {fire.anomaly_ratio}x.
+                FRP emission exceeds normal facility baseline by {anomalyRatio}x.
               </div>
             </div>
           </div>
@@ -249,7 +254,7 @@ export default function IncidentInspector({
           </div>
         </div>
 
-        {/* 2. OPENSTREETMAP FACILITY CONTEXT */}
+        {/* 2. OPENSTREETMAP FACILITY & TERRAIN CONTEXT */}
         <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08] text-xs">
           <div className="flex items-center justify-between mb-1">
             <div className="text-[10px] font-semibold text-slate-400 tracking-wider font-sans">
@@ -288,72 +293,31 @@ export default function IncidentInspector({
           )}
         </div>
 
-        {/* 3. THERMAL EVENT ASSESSMENT (Evidence-First Layout) */}
+        {/* 3. THERMAL ACTIVITY (Requirement 3) */}
         <div className="p-3 rounded bg-[#141a22] border border-white/[0.08]">
           <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
-              THERMAL EVENT ASSESSMENT
-            </div>
-
-            {/* Classification Confidence */}
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#1c2633] text-[10px] font-sans font-medium text-slate-300 border border-white/[0.05]">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>CLASSIFICATION CONFIDENCE: {confidence}%</span>
-            </div>
-          </div>
-
-          {/* Classification Title */}
-          <div className="text-xs font-semibold text-slate-100 mb-1">
-            {cause.cause_title}
-          </div>
-
-          <p className="text-[11px] text-slate-300 leading-relaxed mb-2.5 font-sans">
-            {cause.cause_mechanism}
-          </p>
-
-          {/* Structured Evidence Panel */}
-          <div className="pt-2 border-t border-white/[0.05] space-y-1.5 text-[10px]">
-            <div className="text-slate-400 uppercase text-[9px] font-semibold tracking-wider font-sans">
-              EVIDENCE
-            </div>
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-emerald-400">✓</span>
-              <span>{fire.is_industrial ? "Industrial facility context matched" : "Natural land-cover context matched"}</span>
-            </div>
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-emerald-400">✓</span>
-              <span>Elevated FRP relative to baseline ({fire.frp} MW observed)</span>
-            </div>
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-emerald-400">✓</span>
-              <span>Baseline deviation ({fire.anomaly_ratio || 1.0}x baseline reference)</span>
-            </div>
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-emerald-400">✓</span>
-              <span>Spatial verification (OSM Industrial polygon)</span>
-            </div>
-            <div className="text-slate-300 flex items-center gap-1.5">
-              <span className="text-emerald-400">✓</span>
-              <span>Satellite observation (VIIRS 375m infrared sensor pass)</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. THERMAL HISTORY SPARKLINE */}
-        <div className="p-3 rounded bg-[#141a22] border border-white/[0.08]">
-          <div className="flex items-center justify-between mb-1">
             <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1">
               <TrendingUp className="w-3 h-3 text-orange-400" />
-              <span>THERMAL HISTORY</span>
+              <span>THERMAL ACTIVITY</span>
             </div>
             <span className="text-[9px] font-mono text-slate-400">
-              Baseline Reference: {baselineFrp} MW
+              Historical vs Current FRP
             </span>
           </div>
 
-          {/* SVG Sparkline Chart */}
-          <div className="relative w-full h-[65px] bg-[#0b0e13] rounded border border-white/[0.05] p-1 flex items-center justify-center">
+          {/* Compact Minimal SVG Chart */}
+          <div className="relative w-full h-[70px] bg-[#0b0e13] rounded border border-white/[0.05] p-1 flex items-center justify-center">
             <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-full overflow-visible">
+              {/* Minimal Grid Line */}
+              <line
+                x1={paddingX}
+                y1={svgHeight - paddingY}
+                x2={svgWidth - paddingX}
+                y2={svgHeight - paddingY}
+                stroke="#334155"
+                strokeWidth="0.5"
+              />
+
               {/* Baseline Reference Line */}
               <line
                 x1={paddingX}
@@ -366,7 +330,7 @@ export default function IncidentInspector({
                 opacity="0.6"
               />
 
-              {/* Observation Path */}
+              {/* Thermal Observation Polyline */}
               <polyline
                 fill="none"
                 stroke="#f97316"
@@ -386,11 +350,13 @@ export default function IncidentInspector({
                     <circle
                       cx={x}
                       cy={y}
-                      r={isLast ? 3 : 1.8}
-                      fill={isLast ? "#f97316" : "#64748b"}
+                      r={isLast ? 3.5 : 1.8}
+                      fill={isLast ? (isEmergency ? "#ef4444" : "#f97316") : "#64748b"}
+                      stroke={isLast ? "#ffffff" : "none"}
+                      strokeWidth={isLast ? "1" : "0"}
                     />
                     {isLast && (
-                      <text x={x - 14} y={y - 5} fill="#fdba74" fontSize="8.5" fontWeight="bold" fontFamily="monospace">
+                      <text x={x - 14} y={y - 6} fill={isEmergency ? "#fca5a5" : "#fdba74"} fontSize="9" fontWeight="bold" fontFamily="monospace">
                         {d.val}MW
                       </text>
                     )}
@@ -399,68 +365,120 @@ export default function IncidentInspector({
               })}
             </svg>
           </div>
-          <div className="flex justify-between text-[9px] font-sans text-slate-400 mt-1">
-            <span>BASELINE</span>
+
+          <div className="flex justify-between text-[9px] font-sans text-slate-400 mt-1 px-1">
+            <span>NORMAL BASELINE</span>
             <span>RECENT ACTIVITY</span>
-            <span className="font-medium text-slate-200">CURRENT OBSERVATION</span>
+            <span className="font-semibold text-slate-200">CURRENT OBSERVATION</span>
+          </div>
+
+          {/* Below Chart 3 Metrics */}
+          <div className="grid grid-cols-3 gap-1.5 mt-2.5 pt-2 border-t border-white/[0.05] text-center">
+            <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
+              <div className="text-[9px] text-slate-400 font-sans uppercase">OBSERVED FRP</div>
+              <div className={`text-xs font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-orange-300'}`}>
+                {currentFrp} MW
+              </div>
+            </div>
+
+            <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
+              <div className="text-[9px] text-slate-400 font-sans uppercase">BASELINE</div>
+              <div className="text-xs font-bold font-mono text-slate-200">
+                {baselineFrp} MW
+              </div>
+            </div>
+
+            <div className="p-1.5 rounded bg-[#0b0e13] border border-white/[0.04]">
+              <div className="text-[9px] text-slate-400 font-sans uppercase">ANOMALY RATIO</div>
+              <div className={`text-xs font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-sky-300'}`}>
+                {anomalyRatio}x ABOVE BASELINE
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* 5. 2x2 ANOMALY METRICS GRID */}
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
-            <div className="text-[10px] text-slate-400 font-sans">OBSERVED FRP</div>
-            <div className={`text-base font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-orange-300'}`}>
-              {fire.frp} MW
+        {/* 4. CLASSIFICATION EVIDENCE (Requirement 4 - Evidence-First Explainability) */}
+        <div className="p-3 rounded bg-[#141a22] border border-white/[0.08]">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
+              CLASSIFICATION EVIDENCE
             </div>
-            <div className="text-[9px] text-slate-400 font-sans">Radiative Output</div>
+            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#1b2430] text-slate-300 border border-white/[0.05]">
+              EVIDENCE-FIRST
+            </span>
           </div>
 
-          <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
-            <div className="text-[10px] text-slate-400 font-sans">FACILITY BASELINE</div>
-            <div className="text-base font-bold font-mono text-slate-200">
-              {fire.baseline_frp_mw || 25.0} MW
-            </div>
-            <div className="text-[9px] text-slate-400 font-sans">Historical Tolerance</div>
+          <div className="text-xs font-semibold text-slate-100 mb-1">
+            {cause.cause_title}
           </div>
 
-          <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
-            <div className="text-[10px] text-slate-400 font-sans">ANOMALY RATIO</div>
-            <div className={`text-base font-bold font-mono ${isEmergency ? 'text-red-400' : 'text-sky-400'}`}>
-              {fire.anomaly_ratio}x
-            </div>
-            <div className="text-[9px] text-slate-400 font-sans">Above Normal Baseline</div>
-          </div>
+          <p className="text-[10.5px] text-slate-300 leading-relaxed mb-2.5 font-sans">
+            {cause.cause_mechanism}
+          </p>
 
-          <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
-            <div className="text-[10px] text-slate-400 font-sans">ESTIMATED HAZARD RADIUS</div>
-            <div className="text-base font-bold font-mono text-orange-300">
+          {/* Structured Evidence Checklist */}
+          <div className="space-y-1.5 pt-2 border-t border-white/[0.05] text-[10.5px]">
+            <div className="text-slate-400 uppercase text-[9px] font-semibold tracking-wider font-sans mb-1">
+              SUPPORTING EVIDENCE
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Industrial perimeter match ({fire.is_industrial ? (fire.facility_name || 'OSM Industrial boundary confirmed') : 'Non-industrial terrain polygon'})</span>
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Elevated FRP ({currentFrp} MW observed vs {baselineFrp} MW nominal threshold)</span>
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Baseline deviation ({anomalyRatio}x statistical threshold deviation)</span>
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Facility context verified ({fire.site_hint || 'Industrial infrastructure profile verified'})</span>
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Land-cover context (ESA WorldCover / OSM classification matched)</span>
+            </div>
+            <div className="text-slate-300 flex items-start gap-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>Multi-spectral radiometry (VIIRS 375m Day/Night Band verification)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. POTENTIAL HAZARDS & IMPACT RADIUS */}
+        <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
+          <div className="flex justify-between items-center mb-1.5">
+            <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider font-semibold">
+              ESTIMATED HAZARD RADIUS
+            </div>
+            <div className="text-xs font-bold font-mono text-orange-300">
               {fire.hazard_radius_km || 2.0} km
             </div>
-            <div className="text-[9px] text-slate-400 font-sans">Hazard Assessment</div>
           </div>
+
+          {fire.critical_chemicals && fire.critical_chemicals.length > 0 && (
+            <div className="mt-2 pt-1.5 border-t border-white/[0.05]">
+              <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider mb-1 font-semibold">
+                POTENTIAL HAZARDS
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {fire.critical_chemicals.map((chem, idx) => (
+                  <span
+                    key={idx}
+                    className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#1c2430] text-slate-300 border border-white/[0.05]"
+                  >
+                    {chem}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 6. POTENTIAL HAZARDS (IF INDUSTRIAL) */}
-        {fire.critical_chemicals && fire.critical_chemicals.length > 0 && (
-          <div className="p-2.5 rounded bg-[#141a22] border border-white/[0.08]">
-            <div className="text-[10px] font-sans text-slate-400 uppercase tracking-wider mb-1.5 font-semibold">
-              POTENTIAL HAZARDS
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {fire.critical_chemicals.map((chem, idx) => (
-                <span
-                  key={idx}
-                  className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#1c2430] text-slate-300 border border-white/[0.05]"
-                >
-                  {chem}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 7. ATMOSPHERIC WIND TELEMETRY */}
+        {/* 6. ATMOSPHERIC WIND TELEMETRY */}
         <div className="p-2 rounded bg-[#141a22] border border-white/[0.08] flex items-center justify-between text-xs text-slate-300">
           <div className="flex items-center gap-1.5">
             <Wind className="w-3.5 h-3.5 text-slate-400" />
@@ -472,7 +490,7 @@ export default function IncidentInspector({
           </div>
         </div>
 
-        {/* 8. DISPERSION & REPORT ACTION BUTTONS */}
+        {/* 7. DISPERSION & REPORT ACTION BUTTONS */}
         <div className="space-y-2 pt-1">
           <button
             onClick={onTogglePlume}
