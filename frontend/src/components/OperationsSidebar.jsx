@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Flame, Search, Filter, ArrowUpDown, Activity } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Activity } from 'lucide-react';
 
 export default function OperationsSidebar({
   fires,
@@ -44,7 +44,7 @@ export default function OperationsSidebar({
       {/* 1. Header & Filter Control */}
       <div className="p-3.5 border-b border-white/[0.08] bg-[#10151c]">
         <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-200">
+          <div className="flex items-center gap-1.5 text-xs font-sans font-semibold text-slate-200">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <span>THERMAL EVENTS</span>
           </div>
@@ -53,8 +53,8 @@ export default function OperationsSidebar({
           </span>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="grid grid-cols-3 p-1 rounded-md bg-[#151b22] border border-white/[0.08] text-xs font-mono">
+        {/* Filter Tabs: ALL, INDUSTRIAL, CRITICAL */}
+        <div className="grid grid-cols-3 p-1 rounded-md bg-[#151b22] border border-white/[0.08] text-xs font-sans">
           <button
             onClick={() => setFilterMode('all')}
             className={`py-1.5 px-2 rounded transition-all text-center ${
@@ -63,7 +63,7 @@ export default function OperationsSidebar({
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            ALL EVENTS
+            ALL
           </button>
           <button
             onClick={() => setFilterMode('industrial')}
@@ -83,7 +83,7 @@ export default function OperationsSidebar({
                 : 'text-slate-400 hover:text-red-300'
             }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
             CRITICAL ({emergencyCount})
           </button>
         </div>
@@ -97,7 +97,7 @@ export default function OperationsSidebar({
               placeholder="Search facility, fire ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1.5 rounded-md bg-[#151b22] border border-white/[0.08] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500 font-mono"
+              className="w-full pl-8 pr-2.5 py-1.5 rounded-md bg-[#151b22] border border-white/[0.08] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500 font-sans"
             />
           </div>
 
@@ -105,7 +105,7 @@ export default function OperationsSidebar({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-[#151b22] border border-white/[0.08] text-[11px] font-mono text-slate-300 pl-2 pr-6 py-1.5 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
+              className="appearance-none bg-[#151b22] border border-white/[0.08] text-[11px] font-sans text-slate-300 pl-2 pr-6 py-1.5 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="frp">Sort: Max FRP</option>
               <option value="threat">Sort: Severity</option>
@@ -118,12 +118,12 @@ export default function OperationsSidebar({
       {/* 2. Scrollable Incident Feed */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
         {loading ? (
-          <div className="py-12 text-center text-xs font-mono text-slate-400 flex flex-col items-center gap-2">
+          <div className="py-12 text-center text-xs font-sans text-slate-400 flex flex-col items-center gap-2">
             <Activity className="w-5 h-5 text-slate-400 animate-spin" />
             <span>Processing thermal observations...</span>
           </div>
         ) : processedFires.length === 0 ? (
-          <div className="py-12 text-center text-xs font-mono text-slate-500">
+          <div className="py-12 text-center text-xs font-sans text-slate-500">
             No thermal observations match criteria.
           </div>
         ) : (
@@ -138,14 +138,14 @@ export default function OperationsSidebar({
                 className={`group p-3 rounded-md border cursor-pointer transition-all ${
                   isEmergency
                     ? isSelected
-                      ? 'bg-[#1a1417] border-l-4 border-l-red-500 border-white/[0.12] shadow-md'
+                      ? 'bg-[#1a1417] border-l-4 border-l-red-500 border-white/[0.15] shadow-md'
                       : 'bg-[#151214] border-l-4 border-l-red-500/80 border-white/[0.05] hover:border-white/[0.1] hover:bg-[#1a1518]'
                     : isSelected
-                    ? 'bg-[#17202c] border-l-4 border-l-sky-500 border-white/[0.12] shadow-sm'
+                    ? 'bg-[#17202c] border-l-4 border-l-orange-500/80 border-white/[0.15] shadow-sm'
                     : 'bg-[#12171e] border-l-2 border-l-transparent border-white/[0.05] hover:border-white/[0.1] hover:bg-[#151c24]'
                 }`}
               >
-                {/* Top Row: Event ID & Severity Badge */}
+                {/* Top Row: Event ID, Severity Badge, FRP */}
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-1.5 overflow-hidden">
                     <span
@@ -156,7 +156,7 @@ export default function OperationsSidebar({
                       {fire.fire_id}
                     </span>
                     {isEmergency && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase bg-red-900/60 text-red-200 border border-red-700/50">
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-sans font-semibold uppercase bg-red-900/60 text-red-200 border border-red-700/50">
                         CRITICAL
                       </span>
                     )}
@@ -170,7 +170,7 @@ export default function OperationsSidebar({
                   </div>
                 </div>
 
-                {/* Location */}
+                {/* Location (Prominent) */}
                 <div className="text-xs font-medium text-slate-200 truncate mb-0.5">
                   {fire.location?.district ? `${fire.location.district}, ${fire.location.state}` : (fire.facility_name || fire.site_hint || 'Rural Sector, India')}
                 </div>
@@ -181,12 +181,12 @@ export default function OperationsSidebar({
                   <span>VIIRS {fire.instrument || '375m'}</span>
                 </div>
 
-                {/* Event Classification & Anomaly Context */}
-                <div className="flex items-center justify-between text-[10px] font-mono pt-1 border-t border-white/[0.05] text-slate-400">
+                {/* Event Type & Anomaly Ratio */}
+                <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/[0.05] text-slate-400 font-sans">
                   <span className="truncate max-w-[210px] text-slate-300">
                     {fire.cause_analysis?.cause_title || fire.sub_category || fire.category}
                   </span>
-                  <span className="text-slate-300 font-medium shrink-0">
+                  <span className="text-slate-300 font-medium font-mono shrink-0">
                     {fire.anomaly_ratio ? `${fire.anomaly_ratio}x baseline` : 'Baseline nominal'}
                   </span>
                 </div>
@@ -197,14 +197,14 @@ export default function OperationsSidebar({
       </div>
 
       {/* 3. Bottom Status Bar */}
-      <div className="p-2.5 bg-[#10151c] border-t border-white/[0.08] text-[10px] font-mono flex items-center justify-between text-slate-400">
+      <div className="p-2.5 bg-[#10151c] border-t border-white/[0.08] text-[10px] font-sans flex items-center justify-between text-slate-400">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
           <span>DATA STREAM: <strong className="text-slate-300">ONLINE</strong></span>
         </div>
-        <div>
+        <div className="font-mono">
           STATUS: <span className={isLive ? 'text-emerald-400 font-medium' : 'text-amber-400'}>
-            {isLive ? 'LIVE FEED' : 'BACKUP MODE'}
+            {isLive ? 'LIVE' : 'BACKUP'}
           </span>
         </div>
       </div>

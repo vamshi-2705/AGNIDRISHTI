@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Activity, Flame, Clock, ArrowLeft, Radio } from 'lucide-react';
+import { ShieldAlert, Activity, Flame, Clock, ArrowLeft } from 'lucide-react';
+import logoImg from '../assets/logo.jpg';
 
 export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, onBackToLanding }) {
   const [timeStr, setTimeStr] = useState('');
@@ -27,13 +28,13 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
 
   return (
     <header className="h-16 bg-[#0c1016] border-b border-white/[0.08] px-4 flex items-center justify-between z-30 shrink-0 select-none">
-      {/* Left: Branding & Navigation */}
-      <div className="flex items-center gap-3">
+      {/* Left: Branding & Navigation matching landing page */}
+      <div className="flex items-center gap-3.5">
         {/* Return Button */}
         {onBackToLanding && (
           <button
             onClick={onBackToLanding}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#151b22] hover:bg-[#1c2430] border border-white/[0.08] hover:border-slate-500 text-xs font-mono font-medium text-slate-300 hover:text-white transition-all cursor-pointer group shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#151b22] hover:bg-[#1c2430] border border-white/[0.08] hover:border-slate-500 text-xs font-sans font-medium text-slate-300 hover:text-white transition-all cursor-pointer group shrink-0"
             title="Return to Overview"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-slate-400 group-hover:-translate-x-0.5 transition-transform" />
@@ -46,20 +47,25 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
           onClick={onBackToLanding}
           title={onBackToLanding ? "Return to Overview" : undefined}
         >
-          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-[#151b22] border border-white/[0.1] group-hover:border-slate-500 transition-colors">
-            <Flame className="w-4 h-4 text-orange-400" />
+          {/* Logo matching landing page circular badge */}
+          <div className="relative w-9 h-9 rounded-full overflow-hidden border border-white/[0.1] bg-black flex items-center justify-center p-0.5 transition-transform duration-200 group-hover:scale-105 shadow-sm">
+            <img 
+              src={logoImg} 
+              alt="AGNIDRISHTI Logo" 
+              className="w-full h-full object-cover rounded-full"
+            />
           </div>
 
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold tracking-tight text-white font-sans">
-                AGNIDRISHTI
-              </h1>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#151b22] text-slate-400 border border-white/[0.08]">
-                EARTH OBSERVATION
+            <div className="flex items-baseline gap-1.5 leading-none">
+              <span className="text-base font-black tracking-wider text-orange-500 font-sans">
+                AGNI
+              </span>
+              <span className="text-base font-light tracking-[0.18em] text-white font-sans">
+                DRISHTI
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 tracking-wide font-sans">
+            <p className="text-[10px] text-slate-400 tracking-wide font-sans mt-0.5">
               Geospatial Industrial Thermal Intelligence
             </p>
           </div>
@@ -69,32 +75,32 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
         <div className="hidden lg:flex items-center gap-1.5 ml-2 px-2.5 py-1 rounded-md text-[11px] font-mono border bg-[#151b22] border-white/[0.08]">
           {isLive ? (
             <>
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               <span className="text-emerald-400 font-medium">NASA VIIRS LIVE</span>
             </>
           ) : (
             <>
-              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               <span className="text-amber-300 font-medium">CALIBRATED BACKUP</span>
             </>
           )}
         </div>
       </div>
 
-      {/* Center: Operational Monitoring Posture */}
+      {/* Center: Operational Monitoring Posture (Static dot) */}
       <div className="hidden md:flex items-center">
         {hasEmergencies ? (
-          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-red-950/40 border border-red-800/50">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-red-950/30 border border-red-800/40">
             <span className="w-2 h-2 rounded-full bg-red-500"></span>
-            <span className="text-xs font-semibold tracking-wider text-red-300 font-mono">
+            <span className="text-xs font-semibold tracking-wide text-red-300 font-sans">
               CRITICAL EVENTS DETECTED
             </span>
           </div>
         ) : (
           <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-[#151b22] border border-white/[0.08]">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="text-xs font-medium tracking-wider text-slate-300 font-mono">
-              SYSTEM NOMINAL • SURVEILLANCE ACTIVE
+            <span className="text-xs font-medium tracking-wide text-slate-300 font-sans">
+              SYSTEM NOMINAL
             </span>
           </div>
         )}
@@ -102,31 +108,30 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
 
       {/* Right: Operational Telemetry Metrics + Live UTC Clock */}
       <div className="flex items-center gap-2.5">
-        {/* KPI Chips */}
-        <div className="hidden sm:flex items-center gap-2 text-xs font-mono">
+        <div className="hidden sm:flex items-center gap-2 text-xs">
           {/* Total Hotspots */}
-          <div className="px-2.5 py-1 rounded-md bg-[#151b22] border border-white/[0.08] flex items-center gap-1.5">
+          <div className="px-2.5 py-1 rounded-md bg-[#151b22] border border-white/[0.08] flex items-center gap-1.5 font-sans">
             <Activity className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-400">HOTSPOTS:</span>
-            <span className="font-bold text-slate-200">{kpis.total_active_hotspots}</span>
+            <span className="font-bold text-slate-200 font-mono">{kpis.total_active_hotspots}</span>
           </div>
 
           {/* Emergencies Count */}
-          <div className={`px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${
+          <div className={`px-2.5 py-1 rounded-md border flex items-center gap-1.5 font-sans ${
             hasEmergencies
-              ? 'bg-red-950/40 border-red-800/60 text-red-300'
+              ? 'bg-red-950/30 border-red-800/50 text-red-300'
               : 'bg-[#151b22] border-white/[0.08] text-slate-300'
           }`}>
             <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
             <span className="text-slate-400">CRITICAL:</span>
-            <span className="font-bold">{kpis.critical_industrial_emergencies}</span>
+            <span className="font-bold font-mono">{kpis.critical_industrial_emergencies}</span>
           </div>
 
           {/* Peak FRP */}
-          <div className="px-2.5 py-1 rounded-md bg-[#151b22] border border-white/[0.08] flex items-center gap-1.5">
+          <div className="px-2.5 py-1 rounded-md bg-[#151b22] border border-white/[0.08] flex items-center gap-1.5 font-sans">
             <Flame className="w-3.5 h-3.5 text-orange-400" />
             <span className="text-slate-400">PEAK:</span>
-            <span className="font-bold text-orange-300">{peak.peak_frp_mw} MW</span>
+            <span className="font-bold text-orange-300 font-mono">{peak.peak_frp_mw} MW</span>
           </div>
         </div>
 
