@@ -240,8 +240,12 @@ export default function GisMapViewer({
             <span>Persistent Industrial Source</span>
           </div>
           <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
+            <span>Coal / Mining</span>
+          </div>
+          <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
-            <span>Natural / Biomass</span>
+            <span>Agricultural / Forest</span>
           </div>
           <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06] mt-1">
             <span className="w-3.5 h-2 border border-slate-400 border-dashed bg-slate-700/20 inline-block rounded-xs"></span>
