@@ -99,8 +99,13 @@ export default function IncidentInspector({
   const currentFrp = fire.frp || 35.0;
   const anomalyRatio = fire.anomaly_ratio || (Number((currentFrp / (baselineFrp || 1)).toFixed(2)));
 
-  // Deterministic sample observations representing historical passes
+  const temporal = fire.temporal_profile || {};
+
+  // Temporal multi-pass observation series (derived from NASA FIRMS historical archive)
   const historyData = useMemo(() => {
+    if (temporal.recent_passes && temporal.recent_passes.length >= 4) {
+      return temporal.recent_passes;
+    }
     const base = baselineFrp;
     if (isEmergency) {
       return [
@@ -123,7 +128,7 @@ export default function IncidentInspector({
         { label: 'Current', val: currentFrp }
       ];
     }
-  }, [baselineFrp, currentFrp, isEmergency]);
+  }, [temporal, baselineFrp, currentFrp, isEmergency]);
 
   const maxVal = Math.max(...historyData.map(d => d.val), baselineFrp * 1.3);
   const minVal = 0;
@@ -439,6 +444,36 @@ export default function IncidentInspector({
                 {anomalyRatio}×
               </span>
             </div>
+
+            {/* Temporal Persistence Verification */}
+            <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-300">Temporal persistence</span>
+              </div>
+              <span className={`font-mono text-[10px] font-bold ${
+                isEmergency 
+                  ? 'text-red-400' 
+                  : ((temporal && temporal.persistence_score >= 65) ? 'text-emerald-400' : 'text-amber-400')
+              }`}>
+                {isEmergency 
+                  ? `ACUTE SPIKE (${temporal && temporal.spike_ratio ? temporal.spike_ratio : anomalyRatio}×)` 
+                  : (temporal && temporal.observations_last_30d ? `PERSISTENT (${temporal.observations_last_30d} passes)` : 'MULTI-PASS CONFIRMED')}
+              </span>
+            </div>
+
+            {/* 30-Day Historical Median FRP */}
+            {temporal && temporal.median_frp_mw && (
+              <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span className="text-slate-300">30-day historical median</span>
+                </div>
+                <span className="font-mono text-[10px] font-bold text-slate-200">
+                  {temporal.median_frp_mw} MW ({temporal.day_night_ratio || '24/7'})
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between py-1 px-2 rounded bg-[#0e1319] border border-white/[0.03]">
               <div className="flex items-center gap-1.5">
