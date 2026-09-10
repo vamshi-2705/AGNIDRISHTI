@@ -176,26 +176,13 @@ export default function OperationsSidebar({
             const classificationLabel = getDisplayClassification(fire);
             const timeLabel = fire.acq_time ? (fire.acq_time.includes(':') ? fire.acq_time : `${fire.acq_time} UTC`) : '09:15 UTC';
 
-            let cardSurfaceStyle = '';
-            if (isSelected) {
-              if (isEmergency) {
-                cardSurfaceStyle = 'bg-[#162032]/92 backdrop-blur-md border-white/[0.18] border-l-red-500 shadow-md shadow-black/40';
-              } else {
-                cardSurfaceStyle = 'bg-[#162032]/92 backdrop-blur-md border-white/[0.18] border-l-orange-500 shadow-md shadow-black/40';
-              }
-            } else {
-              if (isEmergency) {
-                cardSurfaceStyle = 'bg-[#111622]/82 backdrop-blur-md border-white/[0.07] border-l-red-500/80 hover:bg-[#162032]/90 hover:border-white/[0.14] shadow-sm';
-              } else {
-                cardSurfaceStyle = 'bg-[#111622]/82 backdrop-blur-md border-white/[0.07] border-l-transparent hover:bg-[#162032]/90 hover:border-white/[0.14] shadow-sm';
-              }
-            }
-
             return (
               <div
                 key={fire.fire_id}
                 onClick={() => onSelectFire(fire)}
-                className={`p-3 rounded-lg border border-l-2 cursor-pointer transition-all duration-150 ${cardSurfaceStyle}`}
+                className={`p-3 rounded-lg cursor-pointer incident-card-translucent ${
+                  isSelected ? 'is-selected' : ''
+                } ${isEmergency ? 'is-critical' : ''}`}
               >
                 {/* 1. Location (Primary) & Incident ID */}
                 <div className="flex items-start justify-between gap-2 mb-1">

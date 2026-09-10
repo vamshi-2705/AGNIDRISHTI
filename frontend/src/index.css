@@ -24,6 +24,43 @@
   }
 }
 
+/* =======================================================
+   TRANSLUCENT INCIDENT CARDS (LEFT SIDEBAR)
+   Matches the subtle dark translucent surface & depth of
+   the right-side analysis inspector sections.
+   ======================================================= */
+.incident-card-translucent {
+  background-color: rgba(15, 21, 32, 0.76) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-left: 2px solid transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.incident-card-translucent:hover {
+  background-color: rgba(22, 32, 50, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.incident-card-translucent.is-critical {
+  border-left: 2px solid rgba(239, 68, 68, 0.85) !important;
+}
+
+.incident-card-translucent.is-selected {
+  background-color: rgba(22, 32, 50, 0.92) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  border-left: 2px solid #f97316 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+
+.incident-card-translucent.is-selected.is-critical {
+  border-left: 2px solid #ef4444 !important;
+}
+
 /* Professional Geospatial Scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
