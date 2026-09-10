@@ -20,69 +20,111 @@ function MapCameraController({ selectedFire }) {
   return null;
 }
 
-// Flame SVG geometry path (Lucide style flame glyph)
-const FLAME_PATH = "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z";
-
-function getFlameColor(fire) {
-  if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
-    return '#ef4444'; // Red
-  }
-  if (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE') {
-    return '#f97316'; // Orange
-  }
-  if (fire.category === 'COAL_MINING_FIRE') {
-    return '#eab308'; // Amber
-  }
-  if (fire.category === 'AGRICULTURAL_STUBBLE') {
-    return '#22c55e'; // Green
-  }
-  if (fire.category === 'FOREST_FIRE') {
-    return '#10b981'; // Emerald
-  }
-  return '#f97316';
-}
-
+/**
+ * Creates pure circular thermal observation dots with data-driven intensity:
+ *
+ * LOW:
+ *        ●
+ *       ···
+ *    very subtle glow
+ *
+ * MODERATE:
+ *        ●
+ *     ·  ·  ·
+ *    soft glow
+ *
+ * HIGH:
+ *        ●
+ *    ·   ●   ·
+ *   stronger glow
+ *
+ * CRITICAL:
+ *        ●
+ *     ◉  ●  ◉
+ *   strong expanding halo
+ */
 function createFireIcon(fire, isSelected) {
-  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
-  const color = getFlameColor(fire);
+  const color = getClassificationColor(fire);
+  const intensity = getThermalIntensity(fire);
 
-  // Marker sizes: Normal 16-18px, Selected 20-24px
-  const containerSize = isSelected ? (isEmergency ? 26 : 22) : (isEmergency ? 18 : 16);
-  const flameSize = isSelected ? (isEmergency ? 22 : 18) : (isEmergency ? 16 : 14);
+  let containerSize = 20;
+  let coreSize = 8;
+  let innerHtml = '';
 
-  let haloHtml = '';
-  if (isSelected) {
-    if (isEmergency) {
-      haloHtml = `<span class="absolute -inset-1 rounded-full bg-red-500/30 ring-1 ring-red-400"></span>`;
-    } else {
-      haloHtml = `<span class="absolute -inset-0.5 rounded-full bg-white/15 ring-1 ring-white/40"></span>`;
-    }
+  const outlineStyle = isSelected 
+    ? 'border: 1.5px solid #ffffff; box-shadow: 0 0 0 2px rgba(255,255,255,0.4);' 
+    : 'border: 1px solid rgba(0,0,0,0.6);';
+
+  if (intensity === 'CRITICAL') {
+    // CRITICAL: ◉  ●  ◉ (strong expanding halo + concentric corona + core pulse)
+    containerSize = isSelected ? 44 : 38;
+    coreSize = isSelected ? 20 : 17;
+    const coronaSize = coreSize + 10;
+
+    innerHtml = `
+      <div class="relative flex items-center justify-center w-full h-full">
+        <!-- Strong expanding outer halo ring (1.4s) -->
+        <span class="absolute w-full h-full rounded-full thermal-ring-critical" style="background-color: ${color}; opacity: 0.42;"></span>
+        
+        <!-- Concentric inner corona ring ◉ -->
+        <span class="absolute rounded-full" style="width: ${coronaSize}px; height: ${coronaSize}px; border: 1.5px solid ${color}; background-color: ${color}25; box-shadow: 0 0 8px ${color}60;"></span>
+        
+        <!-- Solid core with subtle breathing pulse ● -->
+        <span class="relative rounded-full thermal-core-critical" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 14px ${color};"></span>
+      </div>
+    `;
+  } else if (intensity === 'HIGH') {
+    // HIGH: ·  ●  · (stronger glow + soft expanding ring + corona ring)
+    containerSize = isSelected ? 34 : 28;
+    coreSize = isSelected ? 17 : 14;
+    const coronaSize = coreSize + 8;
+
+    innerHtml = `
+      <div class="relative flex items-center justify-center w-full h-full">
+        <!-- Expanding soft halo ring (2.0s) -->
+        <span class="absolute w-full h-full rounded-full thermal-ring-high" style="background-color: ${color}; opacity: 0.28;"></span>
+        
+        <!-- Inner glow ring · ● · -->
+        <span class="absolute rounded-full" style="width: ${coronaSize}px; height: ${coronaSize}px; border: 1px solid ${color}60; background-color: ${color}18;"></span>
+        
+        <!-- Solid core with stronger glow ● -->
+        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 10px ${color}a0;"></span>
+      </div>
+    `;
+  } else if (intensity === 'MODERATE') {
+    // MODERATE: ·  ·  · (soft glow + breathing aura + core)
+    containerSize = isSelected ? 26 : 22;
+    coreSize = isSelected ? 13 : 11;
+    const auraSize = coreSize + 8;
+
+    innerHtml = `
+      <div class="relative flex items-center justify-center w-full h-full">
+        <!-- Soft breathing ambient aura · · · -->
+        <span class="absolute rounded-full thermal-pulse-moderate" style="width: ${auraSize}px; height: ${auraSize}px; background-color: ${color}; opacity: 0.22; filter: blur(1.5px);"></span>
+        
+        <!-- Core dot with soft breathing glow ● -->
+        <span class="relative rounded-full thermal-pulse-moderate" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 6px ${color}80;"></span>
+      </div>
+    `;
+  } else {
+    // LOW: ··· (very subtle glow, static clean dot)
+    containerSize = isSelected ? 20 : 16;
+    coreSize = isSelected ? 10 : 8;
+    const auraSize = coreSize + 4;
+
+    innerHtml = `
+      <div class="relative flex items-center justify-center w-full h-full">
+        <!-- Very subtle glow aura ··· -->
+        <span class="absolute rounded-full" style="width: ${auraSize}px; height: ${auraSize}px; background-color: ${color}; opacity: 0.15; filter: blur(1px);"></span>
+        
+        <!-- Core dot ● -->
+        <span class="relative rounded-full" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; ${outlineStyle} box-shadow: 0 0 3px ${color}50;"></span>
+      </div>
+    `;
   }
-
-  const strokeColor = isSelected ? (isEmergency ? '#ffffff' : '#f8fafc') : 'rgba(0,0,0,0.6)';
-  const strokeWidth = isSelected ? '1.5' : '1';
-
-  const innerHtml = `
-    <div class="relative flex items-center justify-center w-full h-full">
-      ${haloHtml}
-      <svg
-        viewBox="0 0 24 24"
-        width="${flameSize}"
-        height="${flameSize}"
-        fill="${color}"
-        stroke="${strokeColor}"
-        stroke-width="${strokeWidth}"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.9));"
-      >
-        <path d="${FLAME_PATH}" />
-      </svg>
-    </div>
-  `;
 
   return L.divIcon({
-    className: 'gis-flame-glyph-marker',
+    className: 'gis-thermal-dot-marker',
     html: innerHtml,
     iconSize: [containerSize, containerSize],
     iconAnchor: [containerSize / 2, containerSize / 2],
@@ -121,7 +163,7 @@ export default function GisMapViewer({
 
         <MapCameraController selectedFire={selectedFire} />
 
-        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Neutral gray/white dashed line) */}
+        {/* Layer 1: OSM Industrial Facility Boundary Polygons (Neutral slate/white dashed line) */}
         {facilities?.features?.map((fac) => {
           const coords = fac.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]);
           const props = fac.properties;
@@ -185,9 +227,10 @@ export default function GisMapViewer({
           </Polygon>
         )}
 
-        {/* Layer 3: Fire / Ignition Glyph Hotspot Markers */}
+        {/* Layer 3: Intensity-Based Thermal Dot Hotspot Markers */}
         {fires.map((fire) => {
           const isSelected = selectedFire?.fire_id === fire.fire_id;
+          const color = getClassificationColor(fire);
 
           return (
             <Marker
@@ -202,9 +245,7 @@ export default function GisMapViewer({
                 <div className="text-xs text-slate-100 p-1 min-w-[200px] font-sans">
                   <div className="flex items-center justify-between gap-1.5 font-semibold mb-0.5">
                     <div className="flex items-center gap-1.5">
-                      <svg viewBox="0 0 24 24" width="12" height="12" fill={getFlameColor(fire)} stroke="none">
-                        <path d={FLAME_PATH} />
-                      </svg>
+                      <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: color }}></span>
                       <span className="font-mono">{fire.fire_id}</span>
                     </div>
                     <span className="text-orange-300 font-bold font-mono">{fire.frp} MW</span>
@@ -233,39 +274,35 @@ export default function GisMapViewer({
         })}
       </MapContainer>
 
-      {/* Map Symbology Legend with Flame Glyphs & Neutral Perimeter */}
+      {/* Map Symbology Legend: Intensity-Based Thermal Dots & Neutral Perimeter */}
       <div className="absolute bottom-4 left-4 z-[999] bg-[#0c1015]/90 border border-white/[0.08] rounded-md p-2.5 text-[11px] shadow-lg backdrop-blur-md text-slate-300 select-none font-sans">
         <div className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] mb-1.5">
           Map Symbology
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="#ef4444" stroke="#7f1d1d" strokeWidth="0.5">
-              <path d={FLAME_PATH} />
-            </svg>
-            <span>Critical Industrial Anomaly</span>
+            <span className="w-3 h-3 rounded-full bg-red-500 ring-2 ring-red-400/40 inline-block"></span>
+            <span>Critical Industrial</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="#f97316" stroke="#7c2d12" strokeWidth="0.5">
-              <path d={FLAME_PATH} />
-            </svg>
-            <span>Persistent Industrial Flare</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block"></span>
+            <span>Industrial Flare</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="#eab308" stroke="#713f12" strokeWidth="0.5">
-              <path d={FLAME_PATH} />
-            </svg>
-            <span>Coal Seam Combustion</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+            <span>Coal Combustion</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="#22c55e" stroke="#14532d" strokeWidth="0.5">
-              <path d={FLAME_PATH} />
-            </svg>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
             <span>Agricultural / Forest</span>
           </div>
           <div className="flex items-center gap-2 pt-1 border-t border-white/[0.08] mt-1">
-            <span className="w-3.5 h-1 border border-slate-400 border-dashed bg-slate-700/30"></span>
+            <span className="w-3.5 h-1 border border-slate-400 border-dashed bg-slate-700/30 inline-block"></span>
             <span className="text-slate-300 font-mono text-[10px]">OSM Industrial Perimeter</span>
+          </div>
+          <div className="pt-1.5 border-t border-white/[0.06] text-[9.5px] text-slate-400 space-y-0.5 font-sans">
+            <div><strong className="text-slate-300">Dot color</strong> = classification</div>
+            <div><strong className="text-slate-300">Dot intensity</strong> = thermal severity</div>
           </div>
         </div>
       </div>

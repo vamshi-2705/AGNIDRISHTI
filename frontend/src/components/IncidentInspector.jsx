@@ -3,7 +3,7 @@ import { getLiveOsmVerification } from '../services/api';
 import { alertSound } from '../services/alertSound';
 import { X, Volume2, VolumeX, Wind, FileText, Compass, MapPin, CheckCircle2, TrendingUp, Check } from 'lucide-react';
 
-const FLAME_PATH = "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z";
+// Thermal observation indicator
 
 export default function IncidentInspector({
   fire,
@@ -168,9 +168,7 @@ export default function IncidentInspector({
             )}
           </div>
           <h3 className="text-sm font-semibold text-slate-100 leading-tight font-sans flex items-center gap-1.5">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill={isEmergency ? '#ef4444' : '#f97316'} stroke="none" className="shrink-0">
-              <path d={FLAME_PATH} />
-            </svg>
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: fire.threat_color || (isEmergency ? '#ef4444' : '#f97316') }}></span>
             <span>{location.district ? `${location.district}, ${location.state}` : (fire.facility_name || fire.site_hint)}</span>
           </h3>
         </div>
