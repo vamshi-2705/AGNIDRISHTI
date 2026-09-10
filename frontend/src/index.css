@@ -141,37 +141,50 @@
    Clean, professional, non-gaming, restrained motion
    ======================================================= */
 
-/* LOW: existing dot size, subtle static colored glow, no visible pulse */
+/* LOW: 6–9px core, subtle static colored glow, no visible pulse */
 .thermal-dot-low {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 6px 1.5px var(--dot-color, #10b981);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 5px 1.5px var(--dot-color, #10b981), 0 0 8px 2px var(--dot-color, #10b981);
 }
 
-/* MODERATE: existing dot, slightly stronger colored glow, very slow breathing animation (~3s) */
+/* MODERATE: 8–11px core, soft colored glow, very slow breathing animation (~3s) */
 @keyframes thermalBreatheModerate {
   0%, 100% {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 6px 1.5px var(--dot-color, #f97316);
     transform: scale(1);
+    opacity: 0.82;
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 10px 2.5px var(--dot-color, #f97316);
-    transform: scale(1.06);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 11px 2.5px var(--dot-color, #f97316);
+    transform: scale(1.04);
+    opacity: 1;
   }
 }
 
 .thermal-dot-moderate {
   animation: thermalBreatheModerate 3s ease-in-out infinite;
-  will-change: transform, box-shadow;
+  will-change: transform, opacity, box-shadow;
 }
 
-/* HIGH: slightly larger dot, stronger colored glow, slow pulse (~2s), subtle outer halo */
+/* HIGH: 11–15px core, stronger colored glow, slow pulse (~2s), subtle animated outer halo */
 @keyframes thermalPulseHigh {
   0%, 100% {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 8px 2px var(--dot-color, #f97316);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 0 14px 3.5px var(--dot-color, #f97316);
-    transform: scale(1.12);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.9), 0 0 15px 4px var(--dot-color, #f97316);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes thermalHighHalo {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.05;
   }
 }
 
@@ -180,34 +193,49 @@
   will-change: transform, box-shadow;
 }
 
-/* CRITICAL: keep current critical marker appearance, strongest glow, subtle expanding/fading outer ring (~1.3–1.6s) */
+.thermal-dot-high-halo {
+  animation: thermalHighHalo 2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* CRITICAL: 16–20px core, strongest glow, ONE soft expanding outer halo (~1.4–1.6s) */
+@keyframes criticalBeaconCore {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 1.5px #ffffff, 0 0 12px 3px var(--dot-color, #ef4444), 0 0 20px 6px rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 1.5px #ffffff, 0 0 16px 4.5px var(--dot-color, #ef4444), 0 0 26px 8px rgba(239, 68, 68, 0.55);
+  }
+}
+
 @keyframes criticalBeaconRing {
   0% {
-    transform: scale(0.95);
-    opacity: 0.5;
-  }
-  70% {
-    transform: scale(1.6);
-    opacity: 0.15;
+    transform: scale(1);
+    opacity: 0.35;
   }
   100% {
-    transform: scale(1.85);
+    transform: scale(1.6);
     opacity: 0;
   }
 }
 
 .thermal-dot-critical-ring {
-  animation: criticalBeaconRing 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  animation: criticalBeaconRing 1.5s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
   will-change: transform, opacity;
 }
 
 .thermal-dot-critical {
-  box-shadow: 0 0 0 1.5px #ffffff, 0 0 12px 3px var(--dot-color, #ef4444), 0 0 18px 5px rgba(239, 68, 68, 0.45);
+  animation: criticalBeaconCore 1.5s ease-in-out infinite;
+  will-change: transform, box-shadow;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .thermal-dot-moderate,
   .thermal-dot-high,
+  .thermal-dot-high-halo,
+  .thermal-dot-critical,
   .thermal-dot-critical-ring {
     animation: none !important;
   }

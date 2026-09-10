@@ -75,37 +75,41 @@ function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
   const tier = getThermalIntensityTier(fire);
 
-  // Core dot size: low (7px), moderate (8px), high (9.5px), critical (11px)
-  let coreSize = 7;
+  // Core dot sizes per prompt specs:
+  // Low (6–9px -> 7.5px core, selected 9.5px)
+  // Moderate (8–11px -> 9px core, selected 11.5px)
+  // High (11–15px -> 12px core, selected 15px)
+  // Critical (16–20px -> 16px core, selected 19.5px)
+  let coreSize = 7.5;
   let containerSize = 22;
 
   if (tier === 'critical') {
-    coreSize = isSelected ? 13 : 11;
-    containerSize = isSelected ? 34 : 28;
+    coreSize = isSelected ? 19.5 : 16;
+    containerSize = isSelected ? 42 : 36;
   } else if (tier === 'high') {
-    coreSize = isSelected ? 11.5 : 9.5;
-    containerSize = isSelected ? 30 : 24;
+    coreSize = isSelected ? 15 : 12;
+    containerSize = isSelected ? 34 : 28;
   } else if (tier === 'moderate') {
-    coreSize = isSelected ? 10 : 8;
-    containerSize = isSelected ? 28 : 22;
+    coreSize = isSelected ? 11.5 : 9;
+    containerSize = isSelected ? 28 : 24;
   } else {
     // low
-    coreSize = isSelected ? 9 : 7;
-    containerSize = isSelected ? 26 : 20;
+    coreSize = isSelected ? 9.5 : 7.5;
+    containerSize = isSelected ? 24 : 20;
   }
 
-  // Markers use CSS classes: .thermal-dot-low, .thermal-dot-moderate, .thermal-dot-high, .thermal-dot-critical
-  // COLOR = Classification (Red/Orange/Amber/Green), GLOW INTENSITY = Severity (Static -> Breathe -> Pulse -> Beacon)
+  // Markers use pure CSS keyframe animations: .thermal-dot-low, .thermal-dot-moderate, .thermal-dot-high, .thermal-dot-critical
+  // COLOR = Event Classification (Red/Orange/Amber/Green), GLOW INTENSITY = Thermal Severity (Static -> Breathe -> Pulse -> Beacon)
   const innerHtml = `
     <div class="relative flex items-center justify-center w-full h-full" style="--dot-color: ${color};">
       ${tier === 'critical' ? `
-        <span class="absolute rounded-full thermal-dot-critical-ring pointer-events-none" style="width: ${coreSize * 2.2}px; height: ${coreSize * 2.2}px; background-color: ${hexToRgba(color, 0.28)};"></span>
+        <span class="absolute rounded-full thermal-dot-critical-ring pointer-events-none" style="width: ${coreSize * 1.6}px; height: ${coreSize * 1.6}px; background-color: ${hexToRgba(color, 0.28)};"></span>
       ` : ''}
       ${tier === 'high' ? `
-        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize * 1.8}px; height: ${coreSize * 1.8}px; background-color: ${hexToRgba(color, 0.14)}; filter: blur(2px);"></span>
+        <span class="absolute rounded-full thermal-dot-high-halo pointer-events-none" style="width: ${coreSize * 1.5}px; height: ${coreSize * 1.5}px; background-color: ${hexToRgba(color, 0.2)};"></span>
       ` : ''}
       ${isSelected ? `
-        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 8}px; height: ${coreSize + 8}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.5);"></span>
+        <span class="absolute rounded-full pointer-events-none" style="width: ${coreSize + 7}px; height: ${coreSize + 7}px; border: 1.5px solid #ffffff; box-shadow: 0 0 6px rgba(255,255,255,0.6);"></span>
       ` : ''}
       <span class="relative rounded-full thermal-dot-${tier}" style="width: ${coreSize}px; height: ${coreSize}px; background-color: ${color}; border: ${isSelected || tier === 'critical' ? '1.5px solid #ffffff' : '1px solid rgba(0,0,0,0.85)'};"></span>
     </div>
@@ -266,7 +270,7 @@ export default function GisMapViewer({
         <div className="space-y-1 text-[10.5px]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shadow-sm"></span>
-            <span>Industrial Fire</span>
+            <span>Critical Industrial</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></span>
