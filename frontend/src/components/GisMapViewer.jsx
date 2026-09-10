@@ -20,29 +20,50 @@ function MapCameraController({ selectedFire }) {
   return null;
 }
 
+
 /**
- * Creates pure circular thermal observation dots with data-driven intensity:
- *
- * LOW:
- *        ●
- *       ···
- *    very subtle glow
- *
- * MODERATE:
- *        ●
- *     ·  ·  ·
- *    soft glow
- *
- * HIGH:
- *        ●
- *    ·   ●   ·
- *   stronger glow
- *
- * CRITICAL:
- *        ●
- *     ◉  ●  ◉
- *   strong expanding halo
+ * COLOR = WHAT TYPE? (Classification)
  */
+function getClassificationColor(fire) {
+  if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
+    return '#ef4444'; // Red (Critical Emergency)
+  }
+  if (fire.category === 'PERSISTENT_INDUSTRIAL_FLARE') {
+    return '#f97316'; // Orange (Operational Flare)
+  }
+  if (fire.category === 'COAL_MINING_FIRE') {
+    return '#eab308'; // Amber (Coal Seam Combustion)
+  }
+  if (fire.category === 'AGRICULTURAL_STUBBLE') {
+    return '#22c55e'; // Green (Agricultural)
+  }
+  if (fire.category === 'FOREST_FIRE') {
+    return '#10b981'; // Emerald (Forest)
+  }
+  return '#f97316';
+}
+
+/**
+ * INTENSITY = HOW STRONG/ABNORMAL?
+ * Derived from Anomaly Ratio, FRP, and Critical status
+ * Levels: LOW, MODERATE, HIGH, CRITICAL
+ */
+function getThermalIntensity(fire) {
+  if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY' || fire.threat_level === 'CRITICAL') {
+    return 'CRITICAL';
+  }
+  const ratio = fire.anomaly_ratio || (fire.frp && fire.baseline_frp_mw ? fire.frp / fire.baseline_frp_mw : 1.0);
+  const frp = fire.frp || 0;
+
+  if (ratio >= 2.5 || frp >= 150) {
+    return 'HIGH';
+  }
+  if (ratio >= 1.25 || frp >= 50) {
+    return 'MODERATE';
+  }
+  return 'LOW';
+}
+
 function createFireIcon(fire, isSelected) {
   const color = getClassificationColor(fire);
   const intensity = getThermalIntensity(fire);
