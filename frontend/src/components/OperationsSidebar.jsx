@@ -33,6 +33,19 @@ function getDisplayLocation(fire) {
   return 'RURAL SECTOR, INDIA';
 }
 
+function getFrpColorClass(fire) {
+  if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
+    return 'text-red-400';
+  }
+  if (fire.category === 'COAL_MINING_FIRE') {
+    return 'text-amber-400';
+  }
+  if (fire.category === 'AGRICULTURAL_STUBBLE' || fire.category === 'FOREST_FIRE') {
+    return 'text-emerald-400';
+  }
+  return 'text-orange-400';
+}
+
 export default function OperationsSidebar({
   fires,
   filterMode,
@@ -72,9 +85,9 @@ export default function OperationsSidebar({
   const emergencyCount = fires.filter(f => f.is_emergency).length;
 
   return (
-    <aside className="w-[305px] h-full bg-[#0b0f16] border-r border-white/[0.06] flex flex-col shrink-0 z-20 select-none font-sans">
+    <aside className="w-[305px] h-full bg-[#0c1119] border-r border-white/[0.08] flex flex-col shrink-0 z-20 select-none font-sans">
       {/* 1. Header: Events, Critical Counts & Filter Tabs */}
-      <div className="p-3 border-b border-white/[0.06] bg-[#0d121b]">
+      <div className="p-3 border-b border-white/[0.06] bg-[#0f1520]">
         <div className="flex items-center justify-between mb-2.5 text-xs">
           <div className="flex items-center gap-3">
             <div className="flex items-baseline gap-1.5">
@@ -96,12 +109,12 @@ export default function OperationsSidebar({
         </div>
 
         {/* Filter Tabs: ALL, INDUSTRIAL, CRITICAL */}
-        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-[#121822] border border-white/[0.05] text-[11px] font-medium">
+        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-[#111622] border border-white/[0.04] text-[11px] font-medium">
           <button
             onClick={() => setFilterMode('all')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'all'
-                ? 'bg-[#1c2432] text-white shadow-sm font-semibold'
+                ? 'bg-[#18202e] text-white shadow-sm font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -111,7 +124,7 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('industrial')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer ${
               filterMode === 'industrial'
-                ? 'bg-[#1c2432] text-orange-300 shadow-sm font-semibold'
+                ? 'bg-[#18202e] text-orange-300 shadow-sm font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -121,7 +134,7 @@ export default function OperationsSidebar({
             onClick={() => setFilterMode('emergencies')}
             className={`py-1.5 px-2 rounded-md transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 ${
               filterMode === 'emergencies'
-                ? 'bg-red-950/70 text-red-300 shadow-sm font-semibold border border-red-800/40'
+                ? 'bg-red-950/80 text-red-300 shadow-sm font-semibold border border-red-800/40'
                 : 'text-slate-400 hover:text-red-300'
             }`}
           >
@@ -139,7 +152,7 @@ export default function OperationsSidebar({
               placeholder="Search ID, facility, district..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-[#121822] border border-white/[0.06] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500"
+              className="w-full pl-8 pr-2.5 py-1 rounded-md bg-[#111622] border border-white/[0.06] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500"
             />
           </div>
 
@@ -147,7 +160,7 @@ export default function OperationsSidebar({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="appearance-none bg-[#121822] border border-white/[0.06] text-[11px] text-slate-300 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
+              className="appearance-none bg-[#111622] border border-white/[0.06] text-[11px] text-slate-300 pl-2.5 pr-6 py-1 rounded-md focus:outline-none focus:border-slate-500 cursor-pointer"
             >
               <option value="frp">Max FRP</option>
               <option value="threat">Severity</option>
@@ -175,6 +188,7 @@ export default function OperationsSidebar({
             const locationLabel = getDisplayLocation(fire);
             const classificationLabel = getDisplayClassification(fire);
             const timeLabel = fire.acq_time ? (fire.acq_time.includes(':') ? fire.acq_time : `${fire.acq_time} UTC`) : '09:15 UTC';
+            const frpColorClass = getFrpColorClass(fire);
 
             return (
               <div
@@ -207,11 +221,9 @@ export default function OperationsSidebar({
                 </div>
 
                 {/* 3. FRP, Anomaly / Baseline Ratio, VIIRS & Time */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/[0.05] text-[10.5px] font-mono">
+                <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] text-[10.5px] font-mono">
                   <div className="flex items-baseline gap-1.5">
-                    <span className={`font-bold ${
-                      isEmergency ? 'text-red-400 text-[12px]' : 'text-orange-400 text-[12px]'
-                    }`}>
+                    <span className={`font-bold text-[12px] ${frpColorClass}`}>
                       {fire.frp} MW
                     </span>
                     <span className="text-slate-400 text-[10px]">

@@ -30,18 +30,18 @@
    the right-side analysis inspector sections.
    ======================================================= */
 .incident-card-translucent {
-  background-color: rgba(15, 21, 32, 0.76) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(17, 22, 34, 0.88) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-left: 2px solid transparent !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
   transition: all 0.15s ease-in-out !important;
 }
 
 .incident-card-translucent:hover {
-  background-color: rgba(22, 32, 50, 0.88) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  background-color: rgba(23, 30, 46, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 .incident-card-translucent.is-critical {
@@ -49,7 +49,7 @@
 }
 
 .incident-card-translucent.is-selected {
-  background-color: rgba(22, 32, 50, 0.92) !important;
+  background-color: rgba(22, 30, 46, 0.98) !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border-color: rgba(255, 255, 255, 0.18) !important;
