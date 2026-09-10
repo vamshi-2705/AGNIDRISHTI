@@ -55,3 +55,8 @@ frontend/node_modules/
 frontend/dist/
 .vite/
 
+
+# Presentation & Evaluation Assets (Local Only)
+*.pptx
+*.pdf
+agnidrishti_system_architecture.jpg
