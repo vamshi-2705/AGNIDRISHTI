@@ -1,16 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Volume2, VolumeX, SkipForward, Film, AlertCircle } from 'lucide-react';
+import logoImg from '../assets/logo.jpg';
 
 export default function IntroVideoPlayer({ onComplete }) {
   const videoRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isFadingOut, setIsFadingOut] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const controlsTimeoutRef = useRef(null);
 
   // Transition to landing page with smooth fade
   const handleTransition = () => {
@@ -32,162 +26,94 @@ export default function IntroVideoPlayer({ onComplete }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Controls auto-hide on inactivity
-  const handleMouseMove = () => {
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 2800);
-  };
-
-  // Video time tracking
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      const curr = videoRef.current.currentTime;
-      const dur = videoRef.current.duration || 1;
-      setProgress((curr / dur) * 100);
-      setDuration(dur);
-    }
-  };
-
   // Auto-play on mount
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.play()
-        .then(() => setIsPlaying(true))
         .catch((err) => {
           console.warn('[AGNIDRISHTI] Autoplay blocked or video missing:', err);
-          setIsPlaying(false);
         });
     }
   }, []);
 
-  const toggleSound = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !videoRef.current.muted;
-      setIsMuted(videoRef.current.muted);
-    }
-  };
-
   return (
     <div 
-      onMouseMove={handleMouseMove}
-      className={`fixed inset-0 z-[9999] bg-black text-white flex flex-col items-center justify-center select-none transition-opacity duration-700 ${
+      onClick={handleTransition}
+      title="Click anywhere to skip to landing page"
+      className={`fixed inset-0 z-[9999] bg-[#05070a] text-white flex flex-col items-center justify-between p-6 select-none transition-opacity duration-700 cursor-pointer ${
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >
-      {/* Video Element */}
-      {!hasError ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isMuted}
-          onTimeUpdate={handleTimeUpdate}
-          onEnded={handleTransition}
-          onError={() => setHasError(true)}
-          className="w-full h-full object-cover"
-        >
-          <source src="/videos/intro.mp4" type="video/mp4" />
-          <source src="/videos/intro.mp4.mp4" type="video/mp4" />
-          <source src="/videos/intro.webm" type="video/webm" />
-        </video>
-      ) : (
-        /* Graceful Fallback if user hasn't added intro.mp4 yet */
-        <div className="flex flex-col items-center justify-center p-8 max-w-lg text-center font-sans">
-          <div className="w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-6 text-orange-400">
-            <Film className="w-8 h-8" />
-          </div>
-
-          <div className="text-xl font-bold tracking-wider text-white mb-2 uppercase">
-            INTRO VIDEO PIPELINE READY
-          </div>
-
-          <p className="text-sm text-slate-400 leading-relaxed mb-6">
-            Place your video file in the dedicated folder to play before the landing page opens:
-          </p>
-
-          <div className="w-full p-3 rounded-lg bg-[#0d131d] border border-white/[0.08] text-xs font-mono text-orange-300 select-all break-all mb-6">
-            frontend/public/videos/intro.mp4
-          </div>
-
-          <button
-            onClick={handleTransition}
-            className="flex items-center gap-2 px-6 py-3 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold tracking-wide transition-colors cursor-pointer shadow-lg shadow-orange-600/20"
-          >
-            <span>CONTINUE TO LANDING PAGE</span>
-            <SkipForward className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Top Header Watermark & Skip Button */}
-      <div 
-        className={`absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-10 transition-opacity duration-300 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        {/* Brand Watermark */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-sm font-black tracking-widest text-orange-500">AGNI</span>
-          <span className="text-sm font-light tracking-[0.2em] text-white">DRISHTI</span>
-          <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-white/[0.08] text-slate-400 border border-white/[0.06]">
-            INTRO
-          </span>
-        </div>
-
-        {/* Skip Button */}
-        <button
-          onClick={handleTransition}
-          className="group flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.12] hover:bg-white/[0.22] backdrop-blur-md border border-white/[0.15] text-xs font-semibold text-white tracking-wider transition-all duration-200 cursor-pointer shadow-lg"
-          title="Skip to landing page (ESC or Space)"
-        >
-          <span>SKIP INTRO</span>
-          <SkipForward className="w-3.5 h-3.5 text-slate-300 group-hover:translate-x-0.5 transition-transform" />
-        </button>
-      </div>
-
-      {/* Bottom Bar: Sound Toggle & Progress */}
-      {!hasError && (
-        <div 
-          className={`absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-3 z-10 transition-opacity duration-300 ${
-            showControls ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            {/* Audio Toggle */}
-            <button
-              onClick={toggleSound}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/[0.1] text-xs text-slate-200 transition-colors cursor-pointer"
-            >
-              {isMuted ? (
-                <>
-                  <VolumeX className="w-4 h-4 text-orange-400" />
-                  <span className="text-[11px] font-mono">CLICK TO UNMUTE</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
-                  <span className="text-[11px] font-mono">SOUND ON</span>
-                </>
-              )}
-            </button>
-
-            <span className="text-[10px] font-mono text-slate-400">
-              PRESS ESC OR SPACE TO SKIP
-            </span>
-          </div>
-
-          {/* Video Progress Line */}
-          <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-orange-500 transition-all duration-150"
-              style={{ width: `${progress}%` }}
+      {/* 1. Top Header: ONLY Logo */}
+      <div className="w-full flex items-center justify-center pt-2 shrink-0 z-20">
+        <div className="flex items-center gap-3.5">
+          {/* Circular Badge Logo */}
+          <div className="relative w-10 h-10 md:w-11 md:h-11 rounded-full overflow-hidden border border-white/[0.12] bg-black flex items-center justify-center p-0.5 shadow-md">
+            <img 
+              src={logoImg} 
+              alt="AGNI DRISHTI Logo" 
+              className="w-full h-full object-cover rounded-full"
             />
           </div>
+
+          {/* Title and Sub-title Text */}
+          <div className="flex flex-col">
+            <div className="flex items-baseline gap-1.5 leading-none">
+              <span className="text-xl md:text-2xl font-black tracking-wider text-orange-500">
+                AGNI
+              </span>
+              <span className="text-xl md:text-2xl font-light tracking-[0.2em] text-white">
+                DRISHTI
+              </span>
+            </div>
+            <span className="text-[8px] md:text-[9px] font-medium tracking-[0.2em] text-slate-400 uppercase mt-1">
+              GEOSPATIAL THERMAL SURVEILLANCE
+            </span>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* 2. Main HD Video Presentation Viewport */}
+      <div className="relative flex-1 w-full flex items-center justify-center my-auto overflow-hidden">
+        {/* Soft Ambient Cinematic Backlight Glow */}
+        <div className="absolute inset-0 bg-gradient-radial from-orange-500/[0.04] via-transparent to-transparent pointer-events-none" />
+
+        {!hasError ? (
+          <div className="relative rounded-2xl overflow-hidden shadow-[0_25px_70px_rgba(0,0,0,0.95),0_0_40px_rgba(249,115,22,0.12)] border border-white/[0.1] bg-black flex items-center justify-center">
+            <video
+              ref={videoRef}
+              src="/videos/intro.mp4"
+              autoPlay
+              playsInline
+              muted
+              onEnded={handleTransition}
+              onError={() => setHasError(true)}
+              className="max-w-[88vw] max-h-[78vh] w-auto h-auto object-contain rounded-2xl"
+              style={{
+                filter: 'contrast(1.10) brightness(1.04) saturate(1.08)',
+                imageRendering: '-webkit-optimize-contrast',
+                transform: 'translateZ(0)'
+              }}
+            >
+              <source src="/videos/intro.mp4" type="video/mp4" />
+              <source src="/videos/intro.mp4.mp4" type="video/mp4" />
+            </video>
+          </div>
+        ) : (
+          /* Fallback screen */
+          <div className="flex flex-col items-center justify-center p-8 max-w-lg text-center font-sans">
+            <div className="text-xl font-bold tracking-wider text-white mb-2 uppercase">
+              INTRO VIDEO PIPELINE READY
+            </div>
+            <p className="text-sm text-slate-400 leading-relaxed mb-6">
+              Insert your video file into frontend/public/videos/intro.mp4
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Bottom Spacer (keeps logo perfectly balanced, no buttons or lines) */}
+      <div className="h-6 shrink-0" />
     </div>
   );
 }
