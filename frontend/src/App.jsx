@@ -5,6 +5,7 @@ import OperationsSidebar from './components/OperationsSidebar';
 import GisMapViewer from './components/GisMapViewer';
 import IncidentInspector from './components/IncidentInspector';
 import NdrfDossierModal from './components/NdrfDossierModal';
+import IntroVideoModal from './components/IntroVideoModal';
 import LandingPage from './LandingPage';
 import { alertSound } from './services/alertSound';
 import {
@@ -27,6 +28,7 @@ export default function App() {
   const [isLive, setIsLive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [plumeLoading, setPlumeLoading] = useState(false);
+  const [showIntroVideo, setShowIntroVideo] = useState(false);
 
   // Synchronize view with URL hash and browser history (Back/Forward button support)
   useEffect(() => {
@@ -149,7 +151,17 @@ export default function App() {
   const activeEmergencies = fires.filter(f => f.is_emergency).length;
 
   if (currentView === 'landing') {
-    return <LandingPage onOpenPlatform={handleOpenPlatform} />;
+    return (
+      <>
+        <LandingPage 
+          onOpenPlatform={handleOpenPlatform} 
+          onPlayIntro={() => setShowIntroVideo(true)}
+        />
+        {showIntroVideo && (
+          <IntroVideoModal onClose={() => setShowIntroVideo(false)} />
+        )}
+      </>
+    );
   }
 
   return (

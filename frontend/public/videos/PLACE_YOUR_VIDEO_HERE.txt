@@ -1,0 +1,14 @@
+AGNIDRISHTI — INTRO VIDEO DIRECTORY
+==================================================
+
+Drop your presentation / intro video here!
+
+Supported file names (recommended):
+  - intro.mp4 (Recommended)
+  - intro.webm
+  - demo.mp4
+
+Once you copy your file here and name it "intro.mp4", clicking "Play Intro Video" on the Landing Page will immediately load and play it.
+
+Path:
+frontend/public/videos/intro.mp4
