@@ -1,26 +1,85 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Film, Upload, RefreshCw, AlertCircle, Play, CheckCircle2 } from 'lucide-react';
+import { X, Film, Upload, RefreshCw, AlertCircle, Maximize, Minimize, CheckCircle2, Sparkles } from 'lucide-react';
 
 export default function IntroVideoModal({ onClose }) {
   const [videoError, setVideoError] = useState(false);
   const [customVideoUrl, setCustomVideoUrl] = useState(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const fileInputRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  
+  const containerRef = useRef(null);
   const videoRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const controlsTimeoutRef = useRef(null);
 
-  // Close on Escape key
+  // Auto-hide HUD controls after 3 seconds of mouse inactivity
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  };
+
+  // Keyboard shortcut listener (Esc to close, F to toggle native fullscreen, Space to play/pause)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          onClose();
+        }
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleNativeFullscreen();
+      } else if (e.key === ' ' && videoRef.current) {
+        e.preventDefault();
+        if (videoRef.current.paused) {
+          videoRef.current.play();
+        } else {
+          videoRef.current.pause();
+        }
       }
     };
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    // Initial timeout to hide controls
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3500);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
   }, [onClose]);
 
+  // Request or exit native browser fullscreen
+  const toggleNativeFullscreen = () => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen?.().catch((err) => {
+        console.warn('Native fullscreen request declined:', err);
+      });
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
   const handleVideoError = () => {
-    // If not using a custom chosen file, set error state so user gets helpful guide
     if (!customVideoUrl) {
       setVideoError(true);
     }
@@ -29,6 +88,12 @@ export default function IntroVideoModal({ onClose }) {
   const handleVideoCanPlay = () => {
     setVideoError(false);
     setVideoLoaded(true);
+    // Ensure highest playback quality and play
+    if (videoRef.current) {
+      videoRef.current.play().catch(() => {
+        // Autoplay with audio might be blocked by browser policy until interaction
+      });
+    }
   };
 
   const handleFileChange = (e) => {
@@ -50,142 +115,161 @@ export default function IntroVideoModal({ onClose }) {
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/85 backdrop-blur-md z-[3000] flex items-center justify-center p-4 sm:p-6 select-none font-sans"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <div
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      className="fixed inset-0 z-[4000] w-screen h-screen bg-black flex flex-col justify-center items-center overflow-hidden font-sans select-none cursor-default"
     >
-      <div className="bg-[#0c1017] border border-white/[0.12] rounded-xl w-full max-w-4xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
-        {/* Modal Top Bar */}
-        <div className="px-5 py-3.5 border-b border-white/[0.08] bg-[#111620] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-orange-500/10 border border-orange-500/20 text-orange-400">
-              <Film className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold font-mono text-slate-100 flex items-center gap-2">
-                AGNIDRISHTI • SYSTEM BRIEFING & INTRO VIDEO
-              </h2>
-              <p className="text-[10px] font-mono text-slate-400">
-                Source: {customVideoUrl ? 'Local Session Video' : '/videos/intro.mp4'}
-              </p>
-            </div>
+      {/* 1. Cinematic Top HUD Overlay (Fades out when mouse is idle) */}
+      <div
+        className={`absolute top-0 inset-x-0 z-50 px-6 py-5 bg-gradient-to-b from-black/90 via-black/50 to-transparent flex items-center justify-between transition-opacity duration-500 ${
+          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        {/* Left: Branding & High-Def Spec */}
+        <div className="flex items-center gap-3.5">
+          <div className="w-9 h-9 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400 shadow-inner">
+            <Film className="w-5 h-5" />
           </div>
-
-          <div className="flex items-center gap-2">
-            {/* Quick File Select Button */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="video/mp4,video/webm,video/ogg,video/quicktime"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1 rounded bg-[#18202c] hover:bg-[#222c3c] text-[11px] font-mono text-slate-300 border border-white/[0.08] flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Select video file directly from your computer"
-            >
-              <Upload className="w-3 h-3 text-slate-400" />
-              <span>Choose File</span>
-            </button>
-
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded text-slate-400 hover:text-slate-100 hover:bg-[#18202a] transition-colors cursor-pointer"
-              title="Close (Esc)"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm md:text-base font-bold text-white tracking-wide font-mono">
+                AGNIDRISHTI • SYSTEM BRIEFING
+              </h1>
+              {/* HD Quality Badge */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 tracking-wider">
+                <Sparkles className="w-3 h-3" />
+                1080p FULL HD
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+              Source: {customVideoUrl ? 'Local High-Def Session Video' : 'intro.mp4 (High-Def Native Stream)'}
+            </p>
           </div>
         </div>
 
-        {/* Video Player or Fallback Guidance Area */}
-        <div className="relative bg-black flex-1 min-h-[380px] sm:min-h-[460px] flex items-center justify-center overflow-hidden">
-          {videoError ? (
-            /* Helpful staging placeholder if video not placed yet */
-            <div className="max-w-lg p-6 text-center flex flex-col items-center">
-              <div className="w-14 h-14 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 mb-4">
-                <AlertCircle className="w-7 h-7" />
-              </div>
+        {/* Right: Actions & Window Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* File Selector for custom video */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="video/mp4,video/webm,video/ogg,video/quicktime"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-1.5 rounded-md bg-white/[0.08] hover:bg-white/[0.15] text-xs font-mono text-slate-200 border border-white/[0.12] flex items-center gap-1.5 transition-all cursor-pointer backdrop-blur-sm"
+            title="Load custom HD video file"
+          >
+            <Upload className="w-3.5 h-3.5 text-slate-300" />
+            <span>Choose HD File</span>
+          </button>
 
-              <h3 className="text-base font-semibold text-white mb-1.5">
-                Ready for Your Intro Video
-              </h3>
-              <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-                The video folder is ready at <code className="text-orange-300 font-mono bg-white/[0.05] px-1.5 py-0.5 rounded">frontend/public/videos/</code>. 
-                Place your video file there as <code className="text-orange-300 font-mono bg-white/[0.05] px-1.5 py-0.5 rounded">intro.mp4</code>.
-              </p>
+          {/* Fullscreen Toggle Button */}
+          <button
+            onClick={toggleNativeFullscreen}
+            className="p-2 rounded-md bg-white/[0.08] hover:bg-white/[0.15] text-slate-200 border border-white/[0.12] transition-all cursor-pointer backdrop-blur-sm"
+            title={isFullscreen ? 'Exit Fullscreen (F)' : 'Enter Fullscreen (F)'}
+          >
+            {isFullscreen ? (
+              <Minimize className="w-4 h-4 text-slate-200" />
+            ) : (
+              <Maximize className="w-4 h-4 text-slate-200" />
+            )}
+          </button>
 
-              <div className="bg-[#121722] border border-white/[0.08] rounded-lg p-3 text-left w-full mb-5 text-[11px] font-mono text-slate-300 space-y-1.5">
-                <div className="flex items-center gap-2 text-slate-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Folder Created: <strong>frontend/public/videos/</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Target File Name: <strong>intro.mp4</strong></span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 flex-wrap justify-center">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-md bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white flex items-center gap-2 transition-colors cursor-pointer shadow-md"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Select Video File Now</span>
-                </button>
-                <button
-                  onClick={handleRetry}
-                  className="px-4 py-2 rounded-md bg-[#18202c] hover:bg-[#222c3c] text-xs font-medium text-slate-300 border border-white/[0.1] flex items-center gap-2 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Check Again</span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* Live HTML5 Video Player */
-            <video
-              ref={videoRef}
-              key={customVideoUrl || 'default-intro'}
-              controls
-              autoPlay
-              playsInline
-              className="w-full h-full max-h-[75vh] object-contain bg-black"
-              onError={handleVideoError}
-              onCanPlay={handleVideoCanPlay}
-            >
-              {customVideoUrl ? (
-                <source src={customVideoUrl} />
-              ) : (
-                <>
-                  <source src="/videos/intro.mp4" type="video/mp4" />
-                  <source src="/videos/Create_a_second_cinematic_p.mp4" type="video/mp4" />
-                  <source src="/videos/intro.webm" type="video/webm" />
-                  <source src="/videos/demo.mp4" type="video/mp4" />
-                </>
-              )}
-              Your browser does not support the video tag.
-            </video>
-          )}
-        </div>
-
-        {/* Modal Footer Controls */}
-        <div className="px-5 py-2.5 border-t border-white/[0.08] bg-[#111620] flex items-center justify-between text-[11px] font-mono text-slate-400 shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>PRESS [ESC] TO EXIT FULLSCREEN PLAYER</span>
-          </div>
-
+          {/* Close Button */}
           <button
             onClick={onClose}
-            className="px-3 py-1 rounded bg-[#18202c] hover:bg-[#222c3c] text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 transition-all cursor-pointer backdrop-blur-sm"
+            title="Close Player (Esc)"
           >
-            Close
+            <X className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+
+      {/* 2. Main Fullscreen Video Viewport */}
+      <div className="relative w-full h-full flex items-center justify-center bg-black">
+        {videoError ? (
+          /* Staging prompt if video fails to load */
+          <div className="max-w-md p-8 text-center flex flex-col items-center z-20 bg-[#0c1017] border border-white/[0.1] rounded-2xl shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 mb-4">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Ready for Fullscreen HD Video
+            </h3>
+            <p className="text-xs text-slate-400 mb-5 leading-relaxed">
+              Place your high-definition video in <code className="text-orange-300 font-mono bg-white/[0.06] px-1.5 py-0.5 rounded">frontend/public/videos/intro.mp4</code> or select it directly below.
+            </p>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-md bg-orange-600 hover:bg-orange-500 text-xs font-semibold text-white flex items-center gap-2 transition-colors cursor-pointer shadow-md"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Select Video File</span>
+              </button>
+              <button
+                onClick={handleRetry}
+                className="px-4 py-2 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-xs font-medium text-slate-300 border border-white/[0.1] flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Fullscreen Video Element with High-Quality Rendering */
+          <video
+            ref={videoRef}
+            key={customVideoUrl || 'default-intro'}
+            controls
+            autoPlay
+            playsInline
+            preload="auto"
+            className="w-full h-full object-contain bg-black shadow-2xl"
+            style={{
+              imageRendering: 'high-quality',
+              WebkitBackfaceVisibility: 'hidden',
+              maxHeight: '100vh',
+              maxWidth: '100vw'
+            }}
+            onError={handleVideoError}
+            onCanPlay={handleVideoCanPlay}
+          >
+            {customVideoUrl ? (
+              <source src={customVideoUrl} />
+            ) : (
+              <>
+                <source src="/videos/intro.mp4" type="video/mp4" />
+                <source src="/videos/Create_a_second_cinematic_p.mp4" type="video/mp4" />
+                <source src="/videos/intro.webm" type="video/webm" />
+                <source src="/videos/demo.mp4" type="video/mp4" />
+              </>
+            )}
+            Your browser does not support high-definition video streaming.
+          </video>
+        )}
+      </div>
+
+      {/* 3. Subtle Bottom Hint Bar (Auto-hides with controls) */}
+      <div
+        className={`absolute bottom-0 inset-x-0 z-50 px-6 py-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-between text-[11px] font-mono text-slate-400 transition-opacity duration-500 ${
+          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>PRESS [F] FOR NATIVE FULLSCREEN • [SPACE] TO PLAY/PAUSE • [ESC] TO EXIT</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-500">MAX BITRATE HARDWARE ACCELERATED</span>
         </div>
       </div>
     </div>
