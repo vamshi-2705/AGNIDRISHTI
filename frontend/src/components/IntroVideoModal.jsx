@@ -163,6 +163,7 @@ export default function IntroVideoModal({ onClose }) {
               ) : (
                 <>
                   <source src="/videos/intro.mp4" type="video/mp4" />
+                  <source src="/videos/Create_a_second_cinematic_p.mp4" type="video/mp4" />
                   <source src="/videos/intro.webm" type="video/webm" />
                   <source src="/videos/demo.mp4" type="video/mp4" />
                 </>
