@@ -60,3 +60,4 @@ frontend/dist/
 *.pptx
 *.pdf
 agnidrishti_system_architecture.jpg
+generate_*_pdf.py
