@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ArrowUpDown, Loader2 } from 'lucide-react';
+import { Search, ArrowUpDown, Loader2, AlertTriangle, TrendingUp, TrendingDown, Minus, ShieldAlert } from 'lucide-react';
 
 function getDisplayClassification(fire) {
   if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
@@ -58,6 +58,11 @@ export default function OperationsSidebar({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('frp'); // 'frp' | 'threat'
 
+  // Critical emergencies for the dedicated top inbox
+  const criticalInboxEvents = useMemo(() => {
+    return fires.filter(f => f.is_emergency || f.threat_level === 'CRITICAL' || f.exposure_risk_level === 'CRITICAL');
+  }, [fires]);
+
   const processedFires = useMemo(() => {
     let list = [...fires];
 
@@ -65,6 +70,7 @@ export default function OperationsSidebar({
       const q = searchQuery.toLowerCase();
       list = list.filter(f =>
         f.fire_id.toLowerCase().includes(q) ||
+        (f.event_id && f.event_id.toLowerCase().includes(q)) ||
         (f.facility_name && f.facility_name.toLowerCase().includes(q)) ||
         (f.site_hint && f.site_hint.toLowerCase().includes(q)) ||
         (f.location?.district && f.location.district.toLowerCase().includes(q)) ||
@@ -82,13 +88,79 @@ export default function OperationsSidebar({
     return list;
   }, [fires, searchQuery, sortBy]);
 
-  const emergencyCount = fires.filter(f => f.is_emergency).length;
+  const [displayLimit, setDisplayLimit] = useState(75);
+
+  // Reset display limit when query or filter changes
+  React.useEffect(() => {
+    setDisplayLimit(75);
+  }, [searchQuery, filterMode, sortBy]);
+
+  const visibleFires = useMemo(() => {
+    return processedFires.slice(0, displayLimit);
+  }, [processedFires, displayLimit]);
+
+  const emergencyCount = criticalInboxEvents.length;
 
   return (
-    <aside className="absolute top-3 left-3 bottom-3 w-[320px] max-h-[calc(100vh-5.5rem)] rounded-xl shadow-2xl z-[1000] flex flex-col font-sans select-none overflow-hidden glass-panel text-slate-100">
-      {/* 1. Header: Events, Critical Counts & Filter Tabs */}
+    <aside className="absolute top-3 left-3 bottom-3 w-[335px] max-h-[calc(100vh-5.5rem)] rounded-xl shadow-2xl z-[1000] flex flex-col font-sans select-none overflow-hidden glass-panel text-slate-100">
+      {/* 1. Dedicated Critical Events Inbox Header */}
+      {criticalInboxEvents.length > 0 && (
+        <div className="p-2.5 bg-red-950/40 border-b border-red-500/20 shrink-0">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+              <span className="text-[10.5px] font-mono font-bold tracking-wider text-red-300 uppercase">
+                CRITICAL ANOMALY INBOX ({criticalInboxEvents.length})
+              </span>
+            </div>
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700/40">
+              URGENT
+            </span>
+          </div>
+
+          <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+            {criticalInboxEvents.map((item) => {
+              const isSelected = selectedFire?.fire_id === item.fire_id;
+              const expRisk = item.exposure_risk_level || (item.community_exposure?.risk_level) || 'HIGH';
+              return (
+                <div
+                  key={item.fire_id}
+                  onClick={() => onSelectFire(item)}
+                  className={`p-2 rounded-lg cursor-pointer transition-all border ${
+                    isSelected
+                      ? 'bg-red-900/60 border-red-400 shadow-md ring-1 ring-red-400/50'
+                      : 'bg-black/40 hover:bg-red-950/40 border-red-800/40 text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[11px] mb-0.5">
+                    <span className="font-mono font-bold text-red-300 truncate max-w-[170px]">
+                      {item.event_id || item.fire_id}
+                    </span>
+                    <span className="font-mono font-bold text-orange-400">
+                      {item.frp} MW
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-300 truncate mb-1">
+                    {item.facility_name || item.location?.location_summary || `${item.location?.district || 'Jamnagar'}, India`}
+                  </div>
+                  <div className="flex items-center justify-between text-[9.5px] font-mono">
+                    <span className="text-slate-400">
+                      {item.anomaly_ratio ? `${item.anomaly_ratio}× Baseline` : 'Anomaly'}
+                    </span>
+                    <span className="px-1 py-0.2 rounded bg-red-950 text-red-300 border border-red-700 font-semibold">
+                      EXPOSURE: {expRisk}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Filter & Controls Header */}
       <div className="p-3 glass-panel-header shrink-0">
-        <div className="flex items-center justify-between mb-2.5 text-xs">
+        <div className="flex items-center justify-between mb-2 text-xs">
           <div className="flex items-center gap-3">
             <div className="flex items-baseline gap-1.5">
               <span className="text-[11px] font-semibold text-slate-400 tracking-wider">EVENTS</span>
@@ -170,82 +242,113 @@ export default function OperationsSidebar({
         </div>
       </div>
 
-      {/* 2. Scrollable Incident Feed */}
+      {/* 3. Scrollable Incident Feed */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {loading ? (
+        {loading && fires.length === 0 ? (
           <div className="py-14 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
             <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
-            <span>Loading satellite thermal points...</span>
+            <span>Synchronizing satellite thermal points...</span>
           </div>
         ) : processedFires.length === 0 ? (
           <div className="py-14 text-center text-xs text-slate-500">
             No thermal observations match criteria.
           </div>
         ) : (
-          processedFires.map((fire) => {
-            const isSelected = selectedFire?.fire_id === fire.fire_id;
-            const isEmergency = fire.is_emergency;
-            const locationLabel = getDisplayLocation(fire);
-            const classificationLabel = getDisplayClassification(fire);
-            const timeLabel = fire.acq_time ? (fire.acq_time.includes(':') ? fire.acq_time : `${fire.acq_time} UTC`) : '09:15 UTC';
-            const frpColorClass = getFrpColorClass(fire);
-
-            return (
-              <div
-                key={fire.fire_id}
-                onClick={() => onSelectFire(fire)}
-                className={`p-3 rounded-lg cursor-pointer incident-card-translucent ${
-                  isSelected ? 'is-selected' : ''
-                } ${isEmergency ? 'is-critical' : ''}`}
-              >
-                {/* 1. Location (Primary) & Incident ID */}
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <div className="text-[12px] font-bold text-slate-100 tracking-wide leading-tight truncate">
-                    {locationLabel}
-                  </div>
-                  <span className="font-mono text-[10px] text-slate-400 shrink-0 font-medium">
-                    {fire.fire_id}
-                  </span>
+          <>
+            {loading && (
+              <div className="px-2.5 py-1.5 mb-1.5 rounded-lg bg-sky-950/40 border border-sky-500/25 text-[10.5px] text-sky-300 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                  <span>Synchronizing live VIIRS feeds...</span>
                 </div>
-
-                {/* 2. Classification & Severity */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-[11px] font-medium text-slate-300 tracking-wide truncate">
-                    {classificationLabel}
-                  </span>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                    isEmergency ? 'text-red-400' : 'text-slate-400'
-                  }`}>
-                    {fire.threat_level || (isEmergency ? 'CRITICAL' : 'EVALUATED')}
-                  </span>
-                </div>
-
-                {/* 3. FRP, Anomaly / Baseline Ratio, VIIRS & Time */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] text-[10.5px] font-mono">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className={`font-bold text-[12px] ${frpColorClass}`}>
-                      {fire.frp} MW
-                    </span>
-                    <span className="text-slate-400 text-[10px]">
-                      • {fire.anomaly_ratio ? `${fire.anomaly_ratio}× BASELINE` : '1.0× BASELINE'}
-                    </span>
-                  </div>
-
-                  <div className="text-slate-400 text-[10px] shrink-0">
-                    <span>VIIRS • {timeLabel}</span>
-                  </div>
-                </div>
+                <span className="text-[9px] font-mono text-sky-400 font-semibold px-1 py-0.2 rounded bg-sky-900/50">
+                  SYNCING
+                </span>
               </div>
-            );
-          })
+            )}
+            {visibleFires.map((fire) => {
+              const isSelected = selectedFire?.fire_id === fire.fire_id;
+              const isEmergency = fire.is_emergency;
+              const locationLabel = getDisplayLocation(fire);
+              const classificationLabel = getDisplayClassification(fire);
+              const timeLabel = fire.latest_detection || (fire.acq_time ? (fire.acq_time.includes(':') ? fire.acq_time : `${fire.acq_time} UTC`) : '09:15 UTC');
+              const frpColorClass = getFrpColorClass(fire);
+              const satDisplay = fire.satellites_display || 'SNPP + NOAA-21';
+              const obsCount = fire.observation_count || fire.history?.length || 1;
+
+              return (
+                <div
+                  key={fire.fire_id}
+                  onClick={() => onSelectFire(fire)}
+                  className={`p-3 rounded-lg cursor-pointer incident-card-translucent ${
+                    isSelected ? 'is-selected' : ''
+                  } ${isEmergency ? 'is-critical' : ''}`}
+                >
+                  {/* 1. Location & Event ID */}
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="text-[12px] font-bold text-slate-100 tracking-wide leading-tight truncate">
+                      {locationLabel}
+                    </div>
+                    <span className="font-mono text-[10px] text-slate-400 shrink-0 font-medium">
+                      {fire.event_id || fire.fire_id}
+                    </span>
+                  </div>
+
+                  {/* 2. Classification & Provenance Tag */}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[11px] font-medium text-slate-300 tracking-wide truncate">
+                      {classificationLabel}
+                    </span>
+                    <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08] shrink-0">
+                      {satDisplay}
+                    </span>
+                  </div>
+
+                  {/* 3. FRP, Baseline Ratio, Passes & Trend */}
+                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] text-[10.5px] font-mono">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className={`font-bold text-[12px] ${frpColorClass}`}>
+                        {fire.frp} MW
+                      </span>
+                      <span className="text-slate-400 text-[10px]">
+                        • {fire.anomaly_ratio ? `${fire.anomaly_ratio}×` : '1.0×'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-slate-400 text-[10px] shrink-0">
+                      {fire.trend_direction === 'up' ? (
+                        <TrendingUp className="w-3 h-3 text-red-400" />
+                      ) : fire.trend_direction === 'down' ? (
+                        <TrendingDown className="w-3 h-3 text-emerald-400" />
+                      ) : (
+                        <Minus className="w-3 h-3 text-slate-500" />
+                      )}
+                      <span>{obsCount} passes</span>
+                      <span className="text-slate-600">•</span>
+                      <span>{timeLabel}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {processedFires.length > displayLimit && (
+              <button
+                onClick={() => setDisplayLimit(prev => prev + 75)}
+                className="w-full py-2 mt-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-xs font-mono text-slate-300 hover:text-white transition-all text-center cursor-pointer"
+              >
+                Show More (+{processedFires.length - displayLimit} remaining)
+              </button>
+            )}
+          </>
         )}
       </div>
 
-      {/* 3. Bottom Minimal Status Bar */}
+      {/* 4. Bottom Status Bar */}
       <div className="px-3 py-2 glass-panel-footer text-[10px] flex items-center justify-between text-slate-400 font-mono shrink-0">
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-          <span>STREAM: {isLive ? 'NASA VIIRS LIVE' : 'CALIBRATED BACKUP'}</span>
+          <span>NASA VIIRS MULTI-SATELLITE</span>
         </div>
         <span>{fires.length} HOTSPOTS</span>
       </div>

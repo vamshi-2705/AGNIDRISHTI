@@ -3,7 +3,7 @@ import { ArrowRight, Play } from 'lucide-react';
 import logoImg from './assets/logo.jpg';
 import heroBgImg from './assets/hero-bg.jpg';
 
-export default function LandingPage({ onOpenPlatform, onPlayIntro }) {
+export default function LandingPage({ onOpenPlatform, onOpenDemo, onPlayIntro }) {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#070a0e] text-white flex flex-col select-none font-sans">
       {/* 1. Top Navbar */}
@@ -35,14 +35,24 @@ export default function LandingPage({ onOpenPlatform, onPlayIntro }) {
           </div>
         </div>
 
-        {/* Top Right Action Button */}
-        <button
-          onClick={onOpenPlatform}
-          className="group relative inline-flex items-center gap-2.5 px-4 py-2 rounded-md bg-[#141920] hover:bg-[#1a222c] border border-white/[0.1] hover:border-slate-400 text-xs md:text-sm font-medium text-slate-200 hover:text-white transition-all duration-200 cursor-pointer shadow-sm"
-        >
-          <span>Open Platform</span>
-          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
-        </button>
+        {/* Top Right Action Buttons: Demo + Open Platform */}
+        <div className="flex items-center gap-2.5">
+          {onOpenDemo && (
+            <button
+              onClick={onOpenDemo}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gradient-to-r from-orange-500/10 to-amber-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-500/30 text-xs md:text-sm font-mono font-medium text-orange-300 hover:text-white transition-all duration-200 cursor-pointer shadow-sm"
+            >
+              <span>✦ Interactive Demo</span>
+            </button>
+          )}
+          <button
+            onClick={onOpenPlatform}
+            className="group relative inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-[#141920] hover:bg-[#1a222c] border border-white/[0.1] hover:border-slate-400 text-xs md:text-sm font-medium text-slate-200 hover:text-white transition-all duration-200 cursor-pointer shadow-sm"
+          >
+            <span>Open Platform</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        </div>
       </header>
 
       {/* 2. Main Hero Viewport */}
@@ -122,6 +132,15 @@ export default function LandingPage({ onOpenPlatform, onPlayIntro }) {
               <span>Explore AGNIDRISHTI</span>
               <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-white group-hover:translate-x-1 transition-transform" />
             </button>
+
+            {onOpenDemo && (
+              <button
+                onClick={onOpenDemo}
+                className="group inline-flex items-center gap-2 px-5 py-3 rounded-md bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/40 text-sm md:text-base font-mono font-semibold text-orange-200 hover:text-white transition-all duration-200 cursor-pointer shadow-md"
+              >
+                <span>✦ System Walkthrough (Demo)</span>
+              </button>
+            )}
 
             {onPlayIntro && (
               <button

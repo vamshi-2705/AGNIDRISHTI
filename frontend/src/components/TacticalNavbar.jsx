@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Clock, Satellite } from 'lucide-react';
+import { ArrowLeft, Clock, Satellite, RefreshCw } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
 
-export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, onBackToLanding }) {
+export default function TacticalNavbar({
+  summary,
+  isLive,
+  activeEmergencyCount,
+  onBackToLanding,
+  onOpenDemo,
+  syncStatus = 'LIVE',
+  syncMetadata = {},
+  newEventsCount = 0,
+  secondsToNextSync = 300,
+  onTriggerSync
+}) {
   const [istTime, setIstTime] = useState('');
   const [utcTime, setUtcTime] = useState('');
 
@@ -25,12 +36,18 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
 
   const emergencyCount = activeEmergencyCount ?? kpis.critical_industrial_emergencies;
   const hasEmergencies = emergencyCount > 0;
-  const lastUpdated = summary?.last_updated || '2026-09-10 07:15 UTC';
+  const lastSync = syncMetadata?.last_sync_utc || '08:45:00 UTC';
+
+  const formatCountdown = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   return (
     <header className="h-14 bg-[#090d14] border-b border-white/[0.06] px-5 flex items-center justify-between z-30 shrink-0 select-none font-sans">
-      {/* LEFT: Overview / Back + Brand */}
-      <div className="flex items-center gap-4">
+      {/* LEFT: Overview / Back + Demo + Brand */}
+      <div className="flex items-center gap-3">
         {onBackToLanding && (
           <button
             onClick={onBackToLanding}
@@ -38,7 +55,17 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
             title="Return to Overview"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-[11px] tracking-wider uppercase font-semibold">OVERVIEW / BACK</span>
+            <span className="text-[11px] tracking-wider uppercase font-semibold">OVERVIEW</span>
+          </button>
+        )}
+
+        {onOpenDemo && (
+          <button
+            onClick={onOpenDemo}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-orange-500/10 to-amber-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-500/30 text-orange-300 hover:text-white transition-all text-xs font-mono cursor-pointer"
+            title="Open Interactive Demonstration Walkthrough"
+          >
+            <span>✦ DEMO</span>
           </button>
         )}
 
@@ -71,19 +98,44 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
         </div>
       </div>
 
-      {/* CENTER / STATUS: NASA FIRMS • VIIRS (Primary), Critical anomalies (Primary), Observation time (Secondary) */}
-      <div className="hidden md:flex items-center gap-4 text-xs">
-        <div className="flex items-center gap-2">
+      {/* CENTER / STATUS: Multi-Satellite VIIRS + 5-min Sync Status + Critical anomalies */}
+      <div className="hidden lg:flex items-center gap-3 text-xs">
+        {/* Multi-Satellite Provenance Badge */}
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06]">
           <Satellite className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-          <span className="font-bold text-white tracking-wide text-[12.5px]">NASA FIRMS • VIIRS</span>
-          <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-          <span className="text-slate-600 ml-1">•</span>
-          <span className="text-[10px] text-slate-400 font-mono ml-0.5">
-            Latest Observation: <span className="text-slate-400">{lastUpdated}</span>
+          <span className="font-bold text-white tracking-wide text-[11.5px]">
+            VIIRS
+          </span>
+          <span className="text-[10.5px] text-sky-300 font-mono">
+            SNPP • NOAA-20 • NOAA-21
           </span>
         </div>
 
-        <span className="text-slate-700">|</span>
+        {/* 5-Minute Backend Sync Status Indicator */}
+        <div 
+          className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06] font-mono text-[11px] cursor-pointer hover:border-white/20 transition-all"
+          onClick={onTriggerSync}
+          title="AGNIDRISHTI checks for new observations every 5 minutes. Click to refresh."
+        >
+          <span className={`w-2 h-2 rounded-full ${
+            syncStatus === 'SYNCING' ? 'bg-amber-400 animate-spin' :
+            syncStatus === 'LIVE' ? 'bg-emerald-500' :
+            syncStatus === 'STALE' ? 'bg-amber-500' : 'bg-red-500'
+          }`}></span>
+          <span className="font-semibold text-slate-200">
+            {syncStatus === 'SYNCING' ? 'SYNCING...' : 'LIVE 5M SYNC'}
+          </span>
+          <span className="text-slate-600">•</span>
+          <span className="text-slate-400 text-[10px]">
+            Next in {formatCountdown(secondsToNextSync)}
+          </span>
+          {newEventsCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 font-bold text-[9.5px] border border-orange-500/30">
+              +{newEventsCount} NEW
+            </span>
+          )}
+          <RefreshCw className={`w-3 h-3 text-slate-400 ml-1 ${syncStatus === 'SYNCING' ? 'animate-spin text-amber-400' : ''}`} />
+        </div>
 
         {/* PRIMARY: CRITICAL ANOMALIES COUNT */}
         <div className={`flex items-center gap-2 px-2.5 py-1 rounded-md border font-mono ${
@@ -98,9 +150,9 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
         </div>
       </div>
 
-      {/* RIGHT: Events count (Primary), Critical count (Primary), IST & UTC time (Secondary) */}
-      <div className="flex items-center gap-4 text-xs">
-        <div className="hidden sm:flex items-center gap-3 font-mono">
+      {/* RIGHT: Events count, Critical count, IST & UTC */}
+      <div className="flex items-center gap-3 text-xs font-mono">
+        <div className="flex items-center gap-2">
           <div className="flex items-baseline gap-1 px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.05]">
             <span className="text-[10px] uppercase font-semibold text-slate-400 font-sans">EVENTS:</span>
             <span className="font-bold text-white text-[12px]">
@@ -118,8 +170,8 @@ export default function TacticalNavbar({ summary, isLive, activeEmergencyCount, 
           </div>
         </div>
 
-        {/* IST & UTC (Muted secondary timestamp) */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-white/[0.03] border border-white/[0.06] font-mono">
+        {/* IST & UTC Time */}
+        <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-white/[0.03] border border-white/[0.06]">
           <Clock className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-[11px] font-medium text-slate-200">{istTime || 'IST'}</span>
           <span className="text-slate-600">•</span>

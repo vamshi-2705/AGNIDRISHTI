@@ -106,11 +106,11 @@ export default function IntelligencePipelineStrip({ isLive, totalHotspots }) {
               <div className="flex items-center justify-between p-1.5 px-2 rounded bg-[#131822] border border-white/[0.04]">
                 <div>
                   <div className="font-semibold text-slate-200 text-[11px]">OpenStreetMap</div>
-                  <div className="text-[10px] text-slate-400">Industrial context</div>
+                  <div className="text-[10px] text-slate-400">Curated facility registry</div>
                 </div>
-                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  LIVE
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-slate-800 text-amber-300 border border-amber-800/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  REGISTRY
                 </span>
               </div>
 

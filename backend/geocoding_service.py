@@ -49,7 +49,7 @@ def reverse_geocode_live(lat: float, lon: float) -> Dict[str, Any]:
         logger.debug(f"Nominatim lookup timed out ({e}), using local spatial index.")
 
     # High-speed local spatial index fallback
-    fallback = get_location_profile(lat, lon)
+    fallback = reverse_geocode(lat, lon)
     fallback["source"] = "INDIAN_SPATIAL_INDEX"
     _NOMINATIM_CACHE[cache_key] = fallback
     return fallback

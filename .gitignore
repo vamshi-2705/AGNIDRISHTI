@@ -30,8 +30,11 @@ venv.bak/
 
 # Environment variables & secrets
 .env
+*.env
 .env.*
+backend/.env
 !.env.example
+!frontend/.env.example
 
 # IDEs and Editors
 .vscode/
@@ -61,3 +64,8 @@ frontend/dist/
 *.pdf
 agnidrishti_system_architecture.jpg
 generate_*_pdf.py
+
+# Local Databases
+*.db
+*.sqlite
+*.sqlite3
