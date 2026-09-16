@@ -73,9 +73,10 @@ export default function Cesium3DViewer({
 
   // 3D Data Source Mode: 'osm_buildings' | 'terrain_imagery'
   const [tilesetMode, setTilesetMode] = useState('osm_buildings');
-  const [tilesetStatusText, setTilesetStatusText] = useState('Terrain + Buildings');
+  const [tilesetStatusText, setTilesetStatusText] = useState('3D DATA UNAVAILABLE');
   const tilesetRef = useRef(null);
   const terrainProviderRef = useRef(null);
+  const lastFlownRef = useRef({ fireId: null, locateTrigger: -1 });
 
   // Real-time camera telemetry state
   const [cameraTelemetry, setCameraTelemetry] = useState({
@@ -152,7 +153,7 @@ export default function Cesium3DViewer({
     }));
   }, []);
 
-  // Multi-Stage Cinematic Camera Flight: Continuous, Map Always Visible (Sections 1, 6, 7, 8)
+  // Multi-Stage Cinematic Camera Flight: Continuous, Map Always Visible (Sections 1, 3, 4, 5)
   const flyToIncident = useCallback((fire, options = {}) => {
     const v = viewerRef.current || viewer;
     if (!v || !fire) return;
@@ -179,11 +180,7 @@ export default function Cesium3DViewer({
       ? headingDeg 
       : Cesium.Math.toRadians(headingDeg);
 
-    // Check distance to incident from current camera position
-    const currentPos = v.camera.position;
-    const distToTarget = Cesium.Cartesian3.distance(currentPos, targetPos);
-
-    // Destination preloading while camera flies (Section 9)
+    // Destination preloading while camera flies
     if (tilesetRef.current) {
       try {
         tilesetRef.current.preloadFlightDestinations = true;
@@ -192,20 +189,62 @@ export default function Cesium3DViewer({
       }
     }
 
-    // If already in low-altitude vicinity (< 1200m), execute smooth direct re-center inspection
+    // Helper to fly camera stage asynchronously with frame gap
+    const flyStage = (dest, heading, pitch, duration, easing) => {
+      return new Promise((resolve) => {
+        if (flightIdRef.current !== currentFlightId) {
+          resolve(false);
+          return;
+        }
+        v.camera.flyTo({
+          destination: dest,
+          orientation: {
+            heading: heading,
+            pitch: pitch,
+            roll: 0.0
+          },
+          duration: duration,
+          easingFunction: easing,
+          complete: () => {
+            if (flightIdRef.current !== currentFlightId) {
+              resolve(false);
+              return;
+            }
+            requestAnimationFrame(() => resolve(true));
+          },
+          cancel: () => {
+            resolve(false);
+          }
+        });
+      });
+    };
+
+    // Helper to compute camera offset position behind the target along approach heading
+    const computeStagePos = (groundDistMeters, altitudeMeters) => {
+      const dLatDeg = (groundDistMeters * Math.cos(headingRad)) / 111320;
+      const dLonDeg = (groundDistMeters * Math.sin(headingRad)) / (111320 * Math.cos(lat * Math.PI / 180));
+      return Cesium.Cartesian3.fromDegrees(lon - dLonDeg, lat - dLatDeg, altitudeMeters);
+    };
+
+    // STAGE 4 Inspection Position: 150-350m altitude (~220m), oblique pitch -45°
+    const stage4Pos = computeStagePos(200, 220);
+
+    // Check distance to incident from current camera position
+    const currentPos = v.camera.position;
+    const distToTarget = Cesium.Cartesian3.distance(currentPos, targetPos);
+
+    // If already in low-altitude vicinity (< 1200m) and not forced full flight, fly direct to Stage 4
     if (distToTarget < 1200 && !options.forceFullFlight) {
       setIsFlying(true);
       setFlightStage('STAGE 4 — INCIDENT INSPECTION');
 
-      const inspectSphere = new Cesium.BoundingSphere(targetPos, 20);
-      const targetRange = 250; // Low-altitude inspection range (150-350m)
-
-      v.camera.flyToBoundingSphere(inspectSphere, {
-        offset: new Cesium.HeadingPitchRange(
-          headingRad,
-          Cesium.Math.toRadians(-46), // Oblique inspection pitch (-35° to -60°) looking across terrain & structures
-          targetRange
-        ),
+      v.camera.flyTo({
+        destination: stage4Pos,
+        orientation: {
+          heading: headingRad,
+          pitch: Cesium.Math.toRadians(-45), // Oblique inspection pitch (-35° to -60°) looking across terrain & structures
+          roll: 0.0
+        },
         duration: 1.4,
         easingFunction: Cesium.EasingFunction.QUADRATIC_OUT,
         complete: () => {
@@ -219,80 +258,39 @@ export default function Cesium3DViewer({
       return;
     }
 
-    // CONTINUOUS 4-STAGE CINEMATIC FLIGHT — MAP REMAINS 100% VISIBLE (Sections 4, 5, 6)
+    // CONTINUOUS 4-STAGE CINEMATIC FLIGHT — MAP REMAINS 100% VISIBLE
     // Benchmark references: 1600 site inspection baseline / -35 oblique reference
-    setIsFlying(true);
-    setFlightStage('STAGE 1 — REGIONAL CONTEXT');
+    (async () => {
+      setIsFlying(true);
 
-    // STAGE 1 — REGIONAL CONTEXT (Altitude: ~24km, Pitch: -55°, Duration: 1.8s)
-    v.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.12, 24000),
-      orientation: {
-        heading: headingRad,
-        pitch: Cesium.Math.toRadians(-55),
-        roll: 0.0
-      },
-      duration: 1.8,
-      easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
-      complete: () => {
-        if (flightIdRef.current !== currentFlightId) return;
+      // STAGE 1 — REGIONAL CONTEXT (20-40km, Altitude: ~24km, Pitch: -55°, Duration: 1.6s)
+      setFlightStage('STAGE 1 — REGIONAL CONTEXT');
+      const stage1Pos = computeStagePos(12000, 24000);
+      let ok = await flyStage(stage1Pos, headingRad, Cesium.Math.toRadians(-55), 1.6, Cesium.EasingFunction.QUADRATIC_IN_OUT);
+      if (!ok || flightIdRef.current !== currentFlightId) return;
 
-        // STAGE 2 — AREA APPROACH (Altitude: ~3.5km, Pitch: -48°, Duration: 1.8s)
-        setFlightStage('STAGE 2 — AREA APPROACH');
+      // STAGE 2 — AREA APPROACH (3-5km, Altitude: ~3.5km, Pitch: -48°, Duration: 1.5s)
+      setFlightStage('STAGE 2 — AREA APPROACH');
+      const stage2Pos = computeStagePos(2500, 3500);
+      ok = await flyStage(stage2Pos, headingRad, Cesium.Math.toRadians(-48), 1.5, Cesium.EasingFunction.QUADRATIC_IN_OUT);
+      if (!ok || flightIdRef.current !== currentFlightId) return;
 
-        v.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(lon - 0.010, lat - 0.018, 3500),
-          orientation: {
-            heading: headingRad,
-            pitch: Cesium.Math.toRadians(-48),
-            roll: 0.0
-          },
-          duration: 1.8,
-          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
-          complete: () => {
-            if (flightIdRef.current !== currentFlightId) return;
+      // STAGE 3 — FACILITY APPROACH (500-800m, Altitude: ~650m, Pitch: -45°, Duration: 1.4s)
+      setFlightStage('STAGE 3 — FACILITY APPROACH');
+      const stage3Pos = computeStagePos(550, 650);
+      ok = await flyStage(stage3Pos, headingRad, Cesium.Math.toRadians(-45), 1.4, Cesium.EasingFunction.QUADRATIC_IN_OUT);
+      if (!ok || flightIdRef.current !== currentFlightId) return;
 
-            // STAGE 3 — FACILITY APPROACH (Altitude: ~650m, Pitch: -45°, Duration: 1.6s)
-            setFlightStage('STAGE 3 — FACILITY APPROACH');
+      // STAGE 4 — INCIDENT INSPECTION (150-350m, Altitude: ~220m, Pitch: -45°, Duration: 1.5s)
+      setFlightStage('STAGE 4 — INCIDENT INSPECTION');
+      ok = await flyStage(stage4Pos, headingRad, Cesium.Math.toRadians(-45), 1.5, Cesium.EasingFunction.QUADRATIC_OUT);
+      if (!ok || flightIdRef.current !== currentFlightId) return;
 
-            v.camera.flyTo({
-              destination: Cesium.Cartesian3.fromDegrees(lon - 0.0022, lat - 0.0035, 650),
-              orientation: {
-                heading: headingRad,
-                pitch: Cesium.Math.toRadians(-45),
-                roll: 0.0
-              },
-              duration: 1.6,
-              easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
-              complete: () => {
-                if (flightIdRef.current !== currentFlightId) return;
-
-                // STAGE 4 — INCIDENT INSPECTION (Range: 250m, Altitude: ~180m, Pitch: -46°, Duration: 1.6s)
-                setFlightStage('STAGE 4 — INCIDENT INSPECTION');
-
-                const finalSphere = new Cesium.BoundingSphere(targetPos, 20);
-                v.camera.flyToBoundingSphere(finalSphere, {
-                  offset: new Cesium.HeadingPitchRange(
-                    headingRad,
-                    Cesium.Math.toRadians(-46), // Oblique inspection pitch (-35° to -60°) looking across terrain & structures
-                    250 // 250m range (gives ~180m altitude)
-                  ),
-                  duration: 1.6,
-                  easingFunction: Cesium.EasingFunction.QUADRATIC_OUT,
-                  complete: () => {
-                    if (flightIdRef.current !== currentFlightId) return;
-                    isInspectingRef.current = true;
-                    setIsFlying(false);
-                    setFlightStage('INSPECTION READY');
-                    syncTelemetryWithEvent(lat, lon);
-                  }
-                });
-              }
-            });
-          }
-        });
-      }
-    });
+      isInspectingRef.current = true;
+      setIsFlying(false);
+      setFlightStage('INSPECTION READY');
+      syncTelemetryWithEvent(lat, lon);
+    })();
   }, [viewer, calculateInspectionHeading, syncTelemetryWithEvent]);
 
   // Backward-compatible alias for existing test suites
@@ -590,23 +588,20 @@ export default function Cesium3DViewer({
         window.__viewer = viewerInstance;
         window.__Cesium = Cesium;
 
-        // Set initial camera view and start cinematic flight immediately (Sections 9 & 10)
+        // Set initial camera view to regional context (Sections 3 & 9)
         if (selectedFireRef.current) {
           const sFire = selectedFireRef.current;
           const sLat = Number(sFire.latitude);
           const sLon = Number(sFire.longitude);
           if (!isNaN(sLat) && !isNaN(sLon)) {
             viewerInstance.camera.setView({
-              destination: Cesium.Cartesian3.fromDegrees(sLon, sLat - 0.15, 18000),
+              destination: Cesium.Cartesian3.fromDegrees(sLon, sLat - 0.15, 24000),
               orientation: {
                 heading: Cesium.Math.toRadians(0),
                 pitch: Cesium.Math.toRadians(-50),
                 roll: 0.0
               }
             });
-
-            // Start camera flight immediately — no blocking!
-            flyToIncident(sFire, { forceFullFlight: true });
             setActiveCard({ type: 'thermal', data: sFire });
           }
         }
@@ -689,23 +684,23 @@ export default function Cesium3DViewer({
         screenHandlerRef.current = handler;
         setViewer(viewerInstance);
 
-        // Asynchronously stream Cesium World Terrain and OSM Buildings (Sections 3, 4, 18)
+        // Asynchronously stream Cesium World Terrain and OSM Buildings (Sections 1, 2, 11)
         (async () => {
           let loadedTileset = null;
-          let mode = 'imagery_only';
-          let statusText = 'Terrain + Satellite Surface';
+          let terrainLoaded = false;
+          let buildingsLoaded = false;
 
           const hasIonToken = Boolean(ionToken && typeof ionToken === 'string' && ionToken.trim().length > 5);
 
           if (!hasIonToken) {
-            console.warn('[AGNIDRISHTI 3D] Cesium Ion token missing: 3D TERRAIN UNAVAILABLE');
+            console.warn('[AGNIDRISHTI 3D] VITE_CESIUM_ION_TOKEN missing or empty: 3D DATA UNAVAILABLE');
             terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
             setTilesetMode('imagery_only');
-            setTilesetStatusText('3D TERRAIN UNAVAILABLE');
+            setTilesetStatusText('3D DATA UNAVAILABLE');
             return;
           }
 
-          // Primary 3D Buildings: Cesium OSM Buildings (Section 3 & 4)
+          // Primary 3D Buildings: Cesium OSM Buildings (Section 2)
           if (viewerInstance && !viewerInstance.isDestroyed()) {
             try {
               const osmBuildings = await Cesium.createOsmBuildingsAsync({
@@ -714,13 +709,11 @@ export default function Cesium3DViewer({
               if (viewerInstance && !viewerInstance.isDestroyed()) {
                 viewerInstance.scene.primitives.add(osmBuildings);
                 loadedTileset = osmBuildings;
-                mode = 'osm_buildings';
-                statusText = 'Terrain + Buildings';
+                buildingsLoaded = true;
+                console.log('[AGNIDRISHTI 3D] OSM Buildings tileset successfully loaded into scene.');
               }
             } catch (osmErr) {
-              console.warn('[AGNIDRISHTI 3D] OSM Buildings fallback to Terrain + Imagery:', osmErr.message);
-              mode = 'terrain_imagery';
-              statusText = 'Terrain + Satellite Surface';
+              console.error('[AGNIDRISHTI 3D] Cesium Ion OSM Buildings load error (check VITE_CESIUM_ION_TOKEN):', osmErr);
             }
           }
 
@@ -734,24 +727,48 @@ export default function Cesium3DViewer({
 
           tilesetRef.current = loadedTileset;
 
-          // World Terrain loading
+          // World Terrain loading (Section 1)
           if (viewerInstance && !viewerInstance.isDestroyed()) {
             try {
               const terrain = await Cesium.createWorldTerrainAsync();
-              viewerInstance.terrainProvider = terrain;
-              terrainProviderRef.current = terrain;
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                viewerInstance.terrainProvider = terrain;
+                terrainProviderRef.current = terrain;
+                terrainLoaded = true;
+                console.log('[AGNIDRISHTI 3D] Cesium World Terrain successfully loaded.');
+              }
             } catch (terrainErr) {
-              console.warn('[AGNIDRISHTI 3D] World Terrain fallback:', terrainErr.message);
-              terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
-              if (!loadedTileset) {
-                statusText = '3D TERRAIN UNAVAILABLE';
-                mode = 'imagery_only';
+              console.error('[AGNIDRISHTI 3D] Cesium World Terrain load error (check VITE_CESIUM_ION_TOKEN):', terrainErr);
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
+                viewerInstance.terrainProvider = terrainProviderRef.current;
               }
             }
           }
 
+          // Compute truthful Section 11 status:
+          // 3D DATA: ✓ TERRAIN + BUILDINGS
+          // 3D DATA: ✓ TERRAIN
+          // 3D DATA: 3D DATA UNAVAILABLE
+          let finalStatus = '3D DATA UNAVAILABLE';
+          let mode = 'imagery_only';
+
+          if (terrainLoaded && buildingsLoaded) {
+            finalStatus = '✓ TERRAIN + BUILDINGS';
+            mode = 'osm_buildings';
+          } else if (terrainLoaded) {
+            finalStatus = '✓ TERRAIN';
+            mode = 'terrain_imagery';
+          } else if (buildingsLoaded) {
+            finalStatus = '✓ BUILDINGS';
+            mode = 'osm_buildings';
+          } else {
+            finalStatus = '3D DATA UNAVAILABLE';
+            mode = 'imagery_only';
+          }
+
           setTilesetMode(mode);
-          setTilesetStatusText(statusText);
+          setTilesetStatusText(finalStatus);
 
           // Optional OpenStreetMap road overlay layer
           if (viewerInstance && !viewerInstance.isDestroyed()) {
@@ -890,12 +907,21 @@ export default function Cesium3DViewer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewer, selectedFire]);
 
-  // Trigger cinematic approach flight on selectedFire change or locateTrigger
+  // Trigger cinematic approach flight on selectedFire change or locateTrigger (Section 3)
   useEffect(() => {
-    if (viewer && selectedFire) {
-      flyToIncident(selectedFire);
-      setActiveCard({ type: 'thermal', data: selectedFire });
+    if (!viewer || !selectedFire) return;
+
+    const fireKey = selectedFire.fire_id || selectedFire.event_id || `${selectedFire.latitude}_${selectedFire.longitude}`;
+    if (
+      lastFlownRef.current.fireId === fireKey &&
+      lastFlownRef.current.locateTrigger === locateTrigger
+    ) {
+      return;
     }
+    lastFlownRef.current = { fireId: fireKey, locateTrigger };
+
+    flyToIncident(selectedFire);
+    setActiveCard({ type: 'thermal', data: selectedFire });
   }, [viewer, selectedFire, locateTrigger, flyToIncident]);
 
   // Exact FIRMS Incident Marker: Created IMMEDIATELY on selection (Sections 7 & 8)
@@ -1208,6 +1234,27 @@ export default function Cesium3DViewer({
           }
         });
       }
+
+      // 4. Subtle directional wind indicator originating from the incident (Section 7)
+      const windSpeed = Number(selectedFire.wind_speed_kmh) || 12.0;
+      const arrowLenMeters = Math.min(400, Math.max(140, windSpeed * 18));
+      const blowRad = Cesium.Math.toRadians(downwindDeg);
+      const endLat = lat + (arrowLenMeters * Math.cos(blowRad)) / 111320;
+      const endLon = lon + (arrowLenMeters * Math.sin(blowRad)) / (111320 * Math.cos(lat * Math.PI / 180));
+
+      ds.entities.add({
+        name: 'Surface Wind Vector Indicator',
+        polyline: {
+          positions: [
+            Cesium.Cartesian3.fromDegrees(lon, lat, 14),
+            Cesium.Cartesian3.fromDegrees(endLon, endLat, 14)
+          ],
+          width: 4.0,
+          material: new Cesium.PolylineArrowMaterialProperty(
+            Cesium.Color.fromCssColorString('#38BDF8').withAlpha(0.85)
+          )
+        }
+      });
     }
   }, [viewer, activePlume, selectedFire, showPlume]);
 
@@ -1506,12 +1553,15 @@ export default function Cesium3DViewer({
           )}
         </div>
 
-        {/* Non-Blocking 3D Data Status Pill (Section 12) */}
+        {/* Non-Blocking 3D Data Status Pill (Section 11) */}
         <div className="px-2.5 py-1.5 rounded-lg bg-[#0b101b]/90 border border-white/15 backdrop-blur-md shadow-lg flex items-center gap-1.5 text-[10px] font-mono text-slate-300">
           <span className="text-slate-400">3D DATA:</span>
-          <span className="text-cyan-300 font-bold flex items-center gap-1">
-            <Check className="w-3 h-3 text-emerald-400" />
-            <span>{tilesetStatusText}</span>
+          <span className={`font-bold tracking-wide ${
+            tilesetStatusText.includes('UNAVAILABLE') 
+              ? 'text-amber-400/90' 
+              : 'text-cyan-300'
+          }`}>
+            {tilesetStatusText}
           </span>
         </div>
       </div>
