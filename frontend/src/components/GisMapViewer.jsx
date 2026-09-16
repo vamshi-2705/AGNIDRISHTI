@@ -748,13 +748,13 @@ export default function GisMapViewer({
         })}
 
         {/* Layer 4: Thermal Hotspot Markers */}
-        {showThermalEvents && fires.map((fire) => {
+        {showThermalEvents && fires.map((fire, idx) => {
           const isSelected = selectedFire?.fire_id === fire.fire_id;
           const color = getClassificationColor(fire);
 
           return (
             <Marker
-              key={fire.fire_id}
+              key={`${fire.fire_id || fire.event_id || 'fire'}-${fire.latitude}-${fire.longitude}-${idx}`}
               pane={isSelected ? "selected-event-pane" : "thermal-events-pane"}
               zIndexOffset={isSelected ? 1000 : 0}
               position={[fire.latitude, fire.longitude]}

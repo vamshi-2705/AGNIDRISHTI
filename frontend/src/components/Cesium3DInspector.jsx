@@ -89,6 +89,8 @@ export default function Cesium3DInspector({
     ? fire.history.length
     : fire.temporal_profile?.observations_last_30d || 1;
 
+  const observationTime = formatUtcTime(fire.acq_date, fire.acq_time);
+
   // Real Wind & Estimated Dispersion Data (Sections 11 & 12)
   const windSpeedVal = fire.wind_speed_kmh != null ? Number(fire.wind_speed_kmh) : (activePlume?.properties?.wind_speed_kmh != null ? Number(activePlume.properties.wind_speed_kmh) : null);
   const windBearingVal = fire.wind_direction_deg != null ? Number(fire.wind_direction_deg) : (activePlume?.properties?.downwind_azimuth_deg != null ? Number(activePlume.properties.downwind_azimuth_deg) : null);

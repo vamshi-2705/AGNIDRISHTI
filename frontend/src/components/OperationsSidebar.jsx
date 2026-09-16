@@ -119,12 +119,12 @@ export default function OperationsSidebar({
           </div>
 
           <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-            {criticalInboxEvents.map((item) => {
+            {criticalInboxEvents.map((item, idx) => {
               const isSelected = selectedFire?.fire_id === item.fire_id;
               const expRisk = item.exposure_risk_level || (item.community_exposure?.risk_level) || 'HIGH';
               return (
                 <div
-                  key={item.fire_id}
+                  key={`${item.fire_id || item.event_id || 'inbox'}-${idx}`}
                   onClick={() => onSelectFire(item)}
                   className={`p-2 rounded-lg cursor-pointer transition-all border ${
                     isSelected
@@ -266,7 +266,7 @@ export default function OperationsSidebar({
                 </span>
               </div>
             )}
-            {visibleFires.map((fire) => {
+            {visibleFires.map((fire, idx) => {
               const isSelected = selectedFire?.fire_id === fire.fire_id;
               const isEmergency = fire.is_emergency;
               const locationLabel = getDisplayLocation(fire);
@@ -278,7 +278,7 @@ export default function OperationsSidebar({
 
               return (
                 <div
-                  key={fire.fire_id}
+                  key={`${fire.fire_id || fire.event_id || 'fire'}-${idx}`}
                   onClick={() => onSelectFire(fire)}
                   className={`p-3 rounded-lg cursor-pointer incident-card-translucent ${
                     isSelected ? 'is-selected' : ''
