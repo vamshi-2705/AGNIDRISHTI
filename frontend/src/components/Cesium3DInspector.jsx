@@ -213,7 +213,7 @@ export default function Cesium3DInspector({
           <div className="flex items-center justify-between text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              <span>EXACT FIRMS OBSERVATION (WGS84)</span>
+              <span>FIRMS OBSERVATION COORDINATE (WGS84)</span>
             </span>
             <button
               onClick={handleCopyCoords}
@@ -233,6 +233,9 @@ export default function Cesium3DInspector({
               <span className="text-slate-400 text-[9.5px] block">LONGITUDE</span>
               <span className="text-slate-100 font-bold">{lonStr}</span>
             </div>
+          </div>
+          <div className="text-[8.5px] text-slate-400 font-mono tracking-tight pt-0.5">
+            EXACT FIRMS OBSERVATION (SATELLITE DETECTED PIXEL CENTROID)
           </div>
         </div>
 

@@ -226,8 +226,8 @@ export default function Cesium3DViewer({
       return Cesium.Cartesian3.fromDegrees(lon - dLonDeg, lat - dLatDeg, altitudeMeters);
     };
 
-    // STAGE 4 Inspection Position: 150-350m altitude (~220m), oblique pitch -45°
-    const stage4Pos = computeStagePos(200, 220);
+    // STAGE 4 Inspection Position: 250-500m altitude (~300m), oblique pitch -45°
+    const stage4Pos = computeStagePos(260, 300);
 
     // Check distance to incident from current camera position
     const currentPos = v.camera.position;
@@ -263,25 +263,25 @@ export default function Cesium3DViewer({
     (async () => {
       setIsFlying(true);
 
-      // STAGE 1 — REGIONAL CONTEXT (20-40km, Altitude: ~24km, Pitch: -55°, Duration: 1.6s)
+      // STAGE 1 — REGIONAL CONTEXT (India / Regional Overview, Altitude: ~24km, Pitch: -55°, Duration: 1.6s)
       setFlightStage('STAGE 1 — REGIONAL CONTEXT');
       const stage1Pos = computeStagePos(12000, 24000);
       let ok = await flyStage(stage1Pos, headingRad, Cesium.Math.toRadians(-55), 1.6, Cesium.EasingFunction.QUADRATIC_IN_OUT);
       if (!ok || flightIdRef.current !== currentFlightId) return;
 
-      // STAGE 2 — AREA APPROACH (3-5km, Altitude: ~3.5km, Pitch: -48°, Duration: 1.5s)
+      // STAGE 2 — APPROACH TO TARGET (Fly toward event, Altitude: ~5km, Pitch: -48°, Duration: 1.5s)
       setFlightStage('STAGE 2 — AREA APPROACH');
-      const stage2Pos = computeStagePos(2500, 3500);
+      const stage2Pos = computeStagePos(4000, 5000);
       ok = await flyStage(stage2Pos, headingRad, Cesium.Math.toRadians(-48), 1.5, Cesium.EasingFunction.QUADRATIC_IN_OUT);
       if (!ok || flightIdRef.current !== currentFlightId) return;
 
-      // STAGE 3 — FACILITY APPROACH (500-800m, Altitude: ~650m, Pitch: -45°, Duration: 1.4s)
+      // STAGE 3 — LOW-ALTITUDE APPROACH (1-3km altitude, Altitude: ~1.8km, Pitch: -45°, Duration: 1.4s)
       setFlightStage('STAGE 3 — FACILITY APPROACH');
-      const stage3Pos = computeStagePos(550, 650);
+      const stage3Pos = computeStagePos(1500, 1800);
       ok = await flyStage(stage3Pos, headingRad, Cesium.Math.toRadians(-45), 1.4, Cesium.EasingFunction.QUADRATIC_IN_OUT);
       if (!ok || flightIdRef.current !== currentFlightId) return;
 
-      // STAGE 4 — INCIDENT INSPECTION (150-350m, Altitude: ~220m, Pitch: -45°, Duration: 1.5s)
+      // STAGE 4 — INCIDENT INSPECTION (250-500m, Altitude: ~300m, Pitch: -45°, Duration: 1.5s)
       setFlightStage('STAGE 4 — INCIDENT INSPECTION');
       ok = await flyStage(stage4Pos, headingRad, Cesium.Math.toRadians(-45), 1.5, Cesium.EasingFunction.QUADRATIC_OUT);
       if (!ok || flightIdRef.current !== currentFlightId) return;
@@ -1053,7 +1053,7 @@ export default function Cesium3DViewer({
       facContext = `OSM CONTEXT: ${selectedFire.facility_name}`;
     }
 
-    const labelText = `EXACT FIRMS OBSERVATION (WGS84)\nEVENT: ${eventId}  |  FRP: ${frpVal} MW\nOBSERVED: ${timeVal}  |  SATELLITE: ${satVal}\n${latStr}, ${lonStr}\n${facContext}\n      │\n      ▼\n● THERMAL OBSERVATION POINT`;
+    const labelText = `FIRMS Observation Coordinate (WGS84)\nEXACT FIRMS OBSERVATION\nEVENT: ${eventId}  |  FRP: ${frpVal} MW\nOBSERVED: ${timeVal}  |  SATELLITE: ${satVal}\n${latStr}, ${lonStr}\n${facContext}\n      │\n      ▼\n● THERMAL OBSERVATION POINT`;
 
     const eventLabel = ds.entities.add({
       position: posGround,
