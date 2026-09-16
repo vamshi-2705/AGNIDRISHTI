@@ -59,8 +59,8 @@ export default function Cesium3DViewer({
   const [inspectorExpanded, setInspectorExpanded] = useState(true);
   const [activeCard, setActiveCard] = useState(null); // { type: 'thermal' | 'facility' | 'receptor', data: ... }
 
-  // 3D Data Source Mode: 'photorealistic' | 'osm_buildings' | 'terrain_imagery'
-  const [tilesetMode, setTilesetMode] = useState('loading');
+  // 3D Data Source Mode: 'osm_buildings' | 'terrain_imagery'
+  const [tilesetMode, setTilesetMode] = useState('osm_buildings');
   const [tilesetStatusText, setTilesetStatusText] = useState('Terrain + Buildings');
   const tilesetRef = useRef(null);
   const terrainProviderRef = useRef(null);
@@ -677,40 +677,24 @@ export default function Cesium3DViewer({
         screenHandlerRef.current = handler;
         setViewer(viewerInstance);
 
-        // Asynchronously stream 3D Tiles and Terrain in parallel (Sections 9, 10, 11)
+        // Asynchronously stream Cesium World Terrain and OSM Buildings (Sections 3, 5, 6, 7)
         (async () => {
           let loadedTileset = null;
           let mode = 'terrain_imagery';
           let statusText = 'Terrain + Satellite Surface';
 
-          const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-          if (googleMapsKey) {
-            try {
-              const googleTileset = await Cesium.createGooglePhotorealistic3DTileset({
-                key: googleMapsKey,
-                onlyUsingWithGoogleGeocoder: true
-              });
-              if (viewerInstance && !viewerInstance.isDestroyed()) {
-                viewerInstance.scene.primitives.add(googleTileset);
-                loadedTileset = googleTileset;
-                mode = 'photorealistic';
-                statusText = 'Photorealistic 3D';
-              }
-            } catch (gErr) {
-              console.warn('[AGNIDRISHTI 3D] Google 3D Tiles unavailable, using OSM Buildings:', gErr.message);
-            }
-          }
-
-          // Option B Fallback: OSM 3D Buildings
-          if (!loadedTileset && viewerInstance && !viewerInstance.isDestroyed()) {
+          // Primary 3D Buildings: Cesium OSM Buildings (Section 6)
+          if (viewerInstance && !viewerInstance.isDestroyed()) {
             try {
               const osmBuildings = await Cesium.createOsmBuildingsAsync({
                 defaultColor: Cesium.Color.fromCssColorString('#94a3b8').withAlpha(0.85)
               });
-              viewerInstance.scene.primitives.add(osmBuildings);
-              loadedTileset = osmBuildings;
-              mode = 'osm_buildings';
-              statusText = 'Terrain + Buildings';
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                viewerInstance.scene.primitives.add(osmBuildings);
+                loadedTileset = osmBuildings;
+                mode = 'osm_buildings';
+                statusText = 'Terrain + Buildings';
+              }
             } catch (osmErr) {
               console.warn('[AGNIDRISHTI 3D] OSM Buildings fallback to Terrain + Imagery:', osmErr.message);
               mode = 'terrain_imagery';
@@ -1281,11 +1265,25 @@ export default function Cesium3DViewer({
                 <span className="text-cyan-400 text-[9px] font-semibold">{tilesetMode.toUpperCase()}</span>
               </div>
 
-              {/* Photorealistic 3D / Buildings */}
+              {/* World Terrain */}
               <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
                 <span className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>3D Buildings & Structures</span>
+                  <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>World Terrain</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={showTerrain}
+                  onChange={(e) => setShowTerrain(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
+                />
+              </label>
+
+              {/* OSM Buildings */}
+              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
+                <span className="flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>OSM Buildings</span>
                 </span>
                 <input
                   type="checkbox"
@@ -1296,25 +1294,11 @@ export default function Cesium3DViewer({
                 />
               </label>
 
-              {/* 3D Terrain / Elevation */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>3D Terrain Elevation</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showTerrain}
-                  onChange={(e) => setShowTerrain(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Incident Marker */}
+              {/* Exact FIRMS Incident */}
               <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
                 <span className="flex items-center gap-2">
                   <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                  <span>Exact Incident Marker</span>
+                  <span>Exact FIRMS Incident</span>
                 </span>
                 <input
                   type="checkbox"
@@ -1328,7 +1312,7 @@ export default function Cesium3DViewer({
               <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
                 <span className="flex items-center gap-2">
                   <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Facility Footprint Context</span>
+                  <span>Facility Footprint</span>
                 </span>
                 <input
                   type="checkbox"

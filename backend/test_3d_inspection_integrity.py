@@ -165,17 +165,24 @@ def test_multistage_cinematic_camera_flight():
     assert "STAGE 4" in content
 
 
-def test_photorealistic_and_osm_buildings_fallback():
-    """Verify Cesium Google 3D tileset creation with automatic OSM buildings and terrain fallback."""
+def test_cesium_free_3d_stack_without_google():
+    """Verify Cesium-only 3D stack (OSM Buildings + World Terrain) with zero Google dependencies."""
     viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
     with open(viewer_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    assert "createGooglePhotorealistic3DTileset" in content
+    # Must use Cesium native 3D primitives
     assert "createOsmBuildingsAsync" in content
     assert "createWorldTerrainAsync" in content
     assert "tilesetMode" in content
     assert "tilesetStatusText" in content
+    assert "OSM Buildings" in content
+    assert "World Terrain" in content
+
+    # Must NOT have Google 3D Tiles dependencies
+    assert "createGooglePhotorealistic3DTileset" not in content
+    assert "VITE_GOOGLE_MAPS_API_KEY" not in content
+    assert "Google Photorealistic" not in content
 
 
 def test_camera_collision_prevention_enabled():
