@@ -33,8 +33,6 @@ venv.bak/
 *.env
 .env.*
 backend/.env
-!.env.example
-!frontend/.env.example
 
 # IDEs and Editors
 .vscode/
