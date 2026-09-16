@@ -1,8 +1,68 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, Polyline, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Polyline, Marker, Popup, Tooltip, Pane, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Layers, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
+import { 
+  Layers, ChevronDown, ChevronUp, Eye, EyeOff, 
+  Map, Globe, Mountain, Sun, Moon, Check, ShieldAlert, 
+  Building2, Wind, MapPin, Radio, Compass, X 
+} from 'lucide-react';
+
+// Optional custom Map API key from Vite environment (NEVER hardcoded, optional fallback hierarchy)
+const MAP_API_KEY = typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAP_API_KEY 
+  ? String(import.meta.env.VITE_MAP_API_KEY).trim() 
+  : '';
+
+export const BASE_MAP_STORAGE_KEY = 'agnidrishti.mapBaseLayer';
+
+export const BASE_MAP_PROVIDERS = {
+  dark: {
+    id: 'dark',
+    name: 'Dark / Tactical',
+    tagline: 'Muted charcoal geographic map',
+    // Reference-style: medium-charcoal land (#3f3f41) + dark-charcoal water (#222327), subtle borders & roads
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    referenceUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    maxZoom: 19,
+    maxNativeZoom: 16
+  },
+  satellite: {
+    id: 'satellite',
+    name: 'Satellite',
+    tagline: 'High-resolution imagery',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+    maxZoom: 19
+  },
+  streets: {
+    id: 'streets',
+    name: 'Streets',
+    tagline: 'Roads and place names',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012',
+    maxZoom: 19
+  },
+  topographic: {
+    id: 'topographic',
+    name: 'Topographic',
+    tagline: 'Terrain context',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    maxZoom: 19
+  },
+  light: {
+    id: 'light',
+    name: 'Light',
+    tagline: 'Soft light geographic map',
+    // Soft neutral light-gray land (#efefef) + muted slate-blue water (#d0cfd4), NOT blinding white
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    referenceUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, METI, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+    maxZoom: 19,
+    maxNativeZoom: 16
+  }
+};
 
 /**
  * Calculates high-precision geodesic destination point on WGS84 sphere.
@@ -159,6 +219,91 @@ function MapCameraController({ selectedFire }) {
   return null;
 }
 
+/**
+ * Zero-flicker Base Map Layer Manager.
+ * Retains the previous base map underneath during tile fetching to avoid blank white
+ * flashes, and smoothly unmounts once the newly chosen style tiles begin loading.
+ * Supports dedicated reference overlay tiles (labels, roads, borders) in muted tones.
+ */
+function BaseMapLayersManager({ currentProvider, setIsTileLoading }) {
+  const [activeId, setActiveId] = useState(currentProvider.id);
+  const [prevProvider, setPrevProvider] = useState(null);
+
+  useEffect(() => {
+    if (currentProvider.id !== activeId) {
+      setPrevProvider(BASE_MAP_PROVIDERS[activeId] || null);
+      setActiveId(currentProvider.id);
+      setIsTileLoading(true);
+    }
+  }, [currentProvider.id, activeId, setIsTileLoading]);
+
+  const handleCurrentLoad = () => {
+    setIsTileLoading(false);
+    setPrevProvider(null);
+  };
+
+  return (
+    <>
+      {/* Retained layer underneath to prevent white/blank flicker */}
+      {prevProvider && (
+        <>
+          <TileLayer
+            key={`prev-${prevProvider.id}`}
+            url={prevProvider.url}
+            attribution={prevProvider.attribution}
+            subdomains={prevProvider.subdomains || 'abc'}
+            maxZoom={prevProvider.maxZoom || 19}
+            maxNativeZoom={prevProvider.maxNativeZoom || 19}
+            pane="tile-base-pane"
+            zIndex={1}
+            opacity={0.85}
+          />
+          {prevProvider.referenceUrl && (
+            <TileLayer
+              key={`prev-ref-${prevProvider.id}`}
+              url={prevProvider.referenceUrl}
+              pane="tile-reference-pane"
+              maxZoom={prevProvider.maxZoom || 19}
+              maxNativeZoom={prevProvider.maxNativeZoom || 19}
+              zIndex={1}
+              opacity={0.85}
+            />
+          )}
+        </>
+      )}
+
+      {/* Primary selected base map layer (land + water tone) */}
+      <TileLayer
+        key={`curr-${currentProvider.id}`}
+        url={currentProvider.url}
+        attribution={currentProvider.attribution}
+        subdomains={currentProvider.subdomains || 'abc'}
+        maxZoom={currentProvider.maxZoom || 19}
+        maxNativeZoom={currentProvider.maxNativeZoom || 19}
+        pane="tile-base-pane"
+        zIndex={2}
+        eventHandlers={{
+          loading: () => setIsTileLoading(true),
+          load: handleCurrentLoad,
+          tileerror: () => setIsTileLoading(false)
+        }}
+      />
+
+      {/* Dedicated Geographic Reference layer (city/place labels, country names, roads, boundaries) */}
+      {currentProvider.referenceUrl && (
+        <TileLayer
+          key={`curr-ref-${currentProvider.id}`}
+          url={currentProvider.referenceUrl}
+          pane="tile-reference-pane"
+          maxZoom={currentProvider.maxZoom || 19}
+          maxNativeZoom={currentProvider.maxNativeZoom || 19}
+          zIndex={2}
+        />
+      )}
+    </>
+  );
+}
+
 function getClassificationColor(fire) {
   if (fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY') {
     return '#ef4444'; // Red (Critical Industrial Emergency)
@@ -302,15 +447,59 @@ export default function GisMapViewer({
   onSelectFire = () => {},
   activePlume = null
 }) {
+  // Base Map Selection with localStorage persistence
+  const [baseMap, setBaseMap] = useState(() => {
+    try {
+      const saved = localStorage.getItem(BASE_MAP_STORAGE_KEY);
+      if (saved && BASE_MAP_PROVIDERS[saved]) {
+        return saved;
+      }
+    } catch (e) {
+      console.warn('Failed to read map base layer from localStorage', e);
+    }
+    return 'dark';
+  });
+
+  const [isTileLoading, setIsTileLoading] = useState(false);
+
   // Layer visibility toggles
   const [layersOpen, setLayersOpen] = useState(false);
-  const [showSatelliteBasemap, setShowSatelliteBasemap] = useState(false);
   const [showThermalEvents, setShowThermalEvents] = useState(true);
   const [showFacilities, setShowFacilities] = useState(true);
+  const [showPlume, setShowPlume] = useState(true);
+  const [showExposure, setShowExposure] = useState(true);
+  const [showOsmContext, setShowOsmContext] = useState(true);
   const [showSettlements, setShowSettlements] = useState(true);
   const [showSchools, setShowSchools] = useState(true);
   const [showHospitals, setShowHospitals] = useState(true);
-  const [showPlume, setShowPlume] = useState(true);
+
+  // Smooth dismiss when clicking outside layer switcher
+  const layerControlRef = useRef(null);
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (layerControlRef.current && !layerControlRef.current.contains(event.target)) {
+        setLayersOpen(false);
+      }
+    }
+    if (layersOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [layersOpen]);
+
+  const handleSelectBaseMap = (key) => {
+    if (!BASE_MAP_PROVIDERS[key]) return;
+    setBaseMap(key);
+    try {
+      localStorage.setItem(BASE_MAP_STORAGE_KEY, key);
+    } catch (e) {
+      console.warn('Failed to save map base layer to localStorage', e);
+    }
+  };
 
   // Derive intersecting receptors ONLY when an event is selected
   const activeExposure = activePlume?.properties?.community_exposure || selectedFire?.community_exposure;
@@ -362,29 +551,40 @@ export default function GisMapViewer({
     return createDirectionalPlume(lat, lon, downwindBearing, lengthKm);
   }, [selectedFire, activePlume]);
 
+  const currentProvider = BASE_MAP_PROVIDERS[baseMap] || BASE_MAP_PROVIDERS.dark;
+
   return (
     <div className="w-full h-full relative">
+      {/* Non-blocking tile loading indicator */}
+      {isTileLoading && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[960] bg-[#090d14]/90 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono px-3 py-1 rounded-full shadow-xl backdrop-blur-md flex items-center gap-2 pointer-events-none animate-pulse">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          <span>LOADING MAP TILES...</span>
+        </div>
+      )}
+
       <MapContainer
         center={[21.5, 78.5]}
         zoom={5}
-        className="w-full h-full z-0 bg-[#080b10]"
+        className="w-full h-full z-0 bg-[#22242a]"
         zoomControl={false}
         attributionControl={true}
         preferCanvas={true}
       >
-        {/* Basemap Switcher */}
-        {showSatelliteBasemap ? (
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={19}
-          />
-        ) : (
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maxZoom={19}
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
-        )}
+        {/* Strict Leaflet Pane Hierarchy (Section 10) */}
+        <Pane name="tile-base-pane" style={{ zIndex: 200 }} />
+        <Pane name="tile-reference-pane" style={{ zIndex: 210 }} />
+        <Pane name="facilities-pane" style={{ zIndex: 410 }} />
+        <Pane name="dispersion-pane" style={{ zIndex: 420 }} />
+        <Pane name="exposure-pane" style={{ zIndex: 500 }} />
+        <Pane name="thermal-events-pane" style={{ zIndex: 600 }} />
+        <Pane name="selected-event-pane" style={{ zIndex: 650 }} />
+
+        {/* Dynamic User-Selected Map Base Layer with Zero-Flicker Transition */}
+        <BaseMapLayersManager
+          currentProvider={currentProvider}
+          setIsTileLoading={setIsTileLoading}
+        />
 
         <MapCameraController selectedFire={selectedFire} />
 
@@ -401,6 +601,7 @@ export default function GisMapViewer({
           return (
             <Polygon
               key={fac.id || props.facility_id}
+              pane="facilities-pane"
               positions={coords}
               pathOptions={{
                 color: isSelectedFacility ? 'rgba(255, 255, 255, 0.85)' : 'rgba(148, 163, 184, 0.45)',
@@ -410,17 +611,19 @@ export default function GisMapViewer({
                 fillOpacity: isSelectedFacility ? 0.08 : 0.02
               }}
             >
-              <Tooltip sticky>
-                <div className="text-xs font-sans text-slate-100 p-1">
-                  <div className="font-semibold text-slate-400 font-mono text-[10px]">
-                    INDUSTRIAL PERIMETER
+              {showOsmContext && (
+                <Tooltip sticky>
+                  <div className="text-xs font-sans text-slate-100 p-1">
+                    <div className="font-semibold text-slate-400 font-mono text-[10px]">
+                      INDUSTRIAL PERIMETER
+                    </div>
+                    <div className="font-medium text-slate-100 mt-0.5">{props.name}</div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      Baseline: {props.baseline_frp_mw} MW • Max Normal: {props.max_normal_frp_mw} MW
+                    </div>
                   </div>
-                  <div className="font-medium text-slate-100 mt-0.5">{props.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                    Baseline: {props.baseline_frp_mw} MW • Max Normal: {props.max_normal_frp_mw} MW
-                  </div>
-                </div>
-              </Tooltip>
+                </Tooltip>
+              )}
             </Polygon>
           );
         })}
@@ -430,6 +633,7 @@ export default function GisMapViewer({
           <>
             {/* Outer Atmospheric Transport Envelope */}
             <Polygon
+              pane="dispersion-pane"
               positions={directionalPlume.leafletPositions}
               pathOptions={{
                 color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
@@ -465,6 +669,7 @@ export default function GisMapViewer({
             {/* Inner Core Corridor (dense concentration near source) */}
             {directionalPlume.corePositions && (
               <Polygon
+                pane="dispersion-pane"
                 positions={directionalPlume.corePositions}
                 pathOptions={{
                   color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
@@ -478,6 +683,7 @@ export default function GisMapViewer({
 
             {/* Subtle Downwind Dispersion Centerline */}
             <Polyline
+              pane="dispersion-pane"
               positions={directionalPlume.centerline}
               pathOptions={{
                 color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
@@ -489,6 +695,7 @@ export default function GisMapViewer({
 
             {/* Downwind Vector Directional Arrowhead */}
             <Polyline
+              pane="dispersion-pane"
               positions={directionalPlume.arrow}
               pathOptions={{
                 color: '#ffffff',
@@ -500,7 +707,7 @@ export default function GisMapViewer({
         )}
 
         {/* Layer 3: Sensitive Locations within Estimated Exposure Corridor (Rendered ONLY when an event is selected) */}
-        {selectedFire && corridorReceptors.map((rec) => {
+        {showExposure && selectedFire && corridorReceptors.map((rec) => {
           const type = rec.type;
           if (type === 'settlement' && !showSettlements) return null;
           if (type === 'school' && !showSchools) return null;
@@ -513,6 +720,7 @@ export default function GisMapViewer({
           return (
             <Marker
               key={rec.id || `${lat}-${lon}`}
+              pane="exposure-pane"
               position={[lat, lon]}
               icon={createSensitiveIcon(type, true)}
             >
@@ -547,6 +755,8 @@ export default function GisMapViewer({
           return (
             <Marker
               key={fire.fire_id}
+              pane={isSelected ? "selected-event-pane" : "thermal-events-pane"}
+              zIndexOffset={isSelected ? 1000 : 0}
               position={[fire.latitude, fire.longitude]}
               icon={createFireIcon(fire, isSelected)}
               eventHandlers={{
@@ -590,103 +800,161 @@ export default function GisMapViewer({
       </MapContainer>
 
       {/* Floating Layer Control Panel (Top-Right, offsets when inspector is open) */}
-      <div className={`absolute top-3 ${selectedFire ? 'right-[410px]' : 'right-3'} z-[950] font-sans select-none transition-all duration-300`}>
-        <div className="glass-panel rounded-xl shadow-2xl overflow-hidden border border-white/[0.1] bg-[#090d14]/90 backdrop-blur-md text-slate-100 w-[220px]">
+      <div 
+        ref={layerControlRef}
+        className={`absolute top-3 ${selectedFire ? 'right-3 md:right-[410px]' : 'right-3'} z-[950] font-sans select-none transition-all duration-300`}
+      >
+        {/* Mobile Compact Floating Button (When collapsed on mobile screens) */}
+        {!layersOpen && (
+          <button
+            onClick={() => setLayersOpen(true)}
+            className="sm:hidden w-10 h-10 rounded-xl glass-panel shadow-2xl flex items-center justify-center border border-white/[0.15] bg-[#090d14]/95 text-slate-100 hover:text-white cursor-pointer active:scale-95 transition-all"
+            title="Open Map Layers"
+          >
+            <span className="text-base leading-none">🗺</span>
+          </button>
+        )}
+
+        <div className={`glass-panel rounded-xl shadow-2xl overflow-hidden border border-white/[0.12] bg-[#090d14]/95 backdrop-blur-md text-slate-100 w-[260px] sm:w-[280px] max-w-[calc(100vw-24px)] ${!layersOpen ? 'hidden sm:block' : 'block'}`}>
           <button
             onClick={() => setLayersOpen(!layersOpen)}
-            className="w-full px-3 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors"
+            className="w-full px-3 py-2 flex items-center justify-between text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors bg-white/[0.03] hover:bg-white/[0.06]"
+            title="Toggle Map Layers"
           >
             <div className="flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-sky-400" />
-              <span>Map Layers</span>
+              <span className="text-sm leading-none">🗺</span>
+              <span className="font-mono tracking-wider text-[11px] uppercase font-bold text-slate-200">Map Layers</span>
             </div>
-            {layersOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.5 rounded">
+                {currentProvider.name.split(' ')[0]}
+              </span>
+              {layersOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+            </div>
           </button>
 
           {layersOpen && (
-            <div className="p-3 border-t border-white/[0.06] space-y-2 text-[11px]">
-              <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                <span>Thermal Hotspots</span>
-                <input
-                  type="checkbox"
-                  checked={showThermalEvents}
-                  onChange={(e) => setShowThermalEvents(e.target.checked)}
-                  className="rounded accent-orange-500 cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                <span>Industrial Facilities</span>
-                <input
-                  type="checkbox"
-                  checked={showFacilities}
-                  onChange={(e) => setShowFacilities(e.target.checked)}
-                  className="rounded accent-sky-500 cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                <span>Dispersion Plume</span>
-                <input
-                  type="checkbox"
-                  checked={showPlume}
-                  onChange={(e) => setShowPlume(e.target.checked)}
-                  className="rounded accent-red-500 cursor-pointer"
-                />
-              </label>
-
-              <div className="pt-1.5 border-t border-white/[0.06] space-y-1.5">
-                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
-                  Sensitive Places
-                </span>
-                <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                    <span>Settlements</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={showSettlements}
-                    onChange={(e) => setShowSettlements(e.target.checked)}
-                    className="rounded accent-cyan-400 cursor-pointer"
-                  />
-                </label>
-                <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                    <span>Schools</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={showSchools}
-                    onChange={(e) => setShowSchools(e.target.checked)}
-                    className="rounded accent-purple-400 cursor-pointer"
-                  />
-                </label>
-                <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                    <span>Hospitals</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={showHospitals}
-                    onChange={(e) => setShowHospitals(e.target.checked)}
-                    className="rounded accent-rose-400 cursor-pointer"
-                  />
-                </label>
+            <div className="p-3 border-t border-white/[0.08] space-y-3.5 text-[11px] max-h-[calc(100vh-140px)] overflow-y-auto">
+              {/* BASE MAP SECTION */}
+              <div>
+                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span className="text-cyan-400 font-bold">Base Map</span>
+                  <span className="text-[9px] text-slate-500 font-mono">1 active</span>
+                </div>
+                <div className="space-y-1">
+                  {Object.values(BASE_MAP_PROVIDERS).map((p) => {
+                    const isSelected = baseMap === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectBaseMap(p.id)}
+                        className={`w-full text-left p-2 rounded-lg transition-all flex items-start gap-2.5 cursor-pointer border ${
+                          isSelected
+                            ? 'bg-cyan-950/50 border-cyan-500/60 text-white shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                            : 'bg-white/[0.02] border-white/[0.05] text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                      >
+                        <div className="mt-0.5 shrink-0">
+                          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border transition-all ${
+                            isSelected ? 'border-cyan-400 bg-cyan-500' : 'border-slate-600 bg-transparent'
+                          }`}>
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-slate-950"></span>}
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`font-medium ${isSelected ? 'text-cyan-300 font-semibold' : 'text-slate-200'}`}>
+                              {p.name}
+                            </span>
+                            {isSelected && (
+                              <span className="text-[8.5px] font-mono text-cyan-300 px-1 py-0.2 rounded bg-cyan-900/60 border border-cyan-700/60 shrink-0">
+                                ACTIVE
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
+                            {p.tagline}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="pt-1.5 border-t border-white/[0.06]">
-                <label className="flex items-center justify-between cursor-pointer text-slate-300 hover:text-white">
-                  <span>Satellite Imagery</span>
-                  <input
-                    type="checkbox"
-                    checked={showSatelliteBasemap}
-                    onChange={(e) => setShowSatelliteBasemap(e.target.checked)}
-                    className="rounded accent-sky-400 cursor-pointer"
-                  />
-                </label>
+              {/* ANALYSIS OVERLAYS SECTION */}
+              <div className="pt-2.5 border-t border-white/[0.08]">
+                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span className="text-orange-400 font-bold">Analysis Overlays</span>
+                  <span className="text-[9px] text-slate-500 font-mono">Independent</span>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.8)]"></span>
+                      <span className="font-medium">Thermal Events</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showThermalEvents}
+                      onChange={(e) => setShowThermalEvents(e.target.checked)}
+                      className="rounded accent-orange-500 cursor-pointer w-3.5 h-3.5"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-sky-500 border border-sky-400/60"></span>
+                      <span className="font-medium">Industrial Facilities</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showFacilities}
+                      onChange={(e) => setShowFacilities(e.target.checked)}
+                      className="rounded accent-sky-500 cursor-pointer w-3.5 h-3.5"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                    <div className="flex items-center gap-2">
+                      <Wind className="w-3.5 h-3.5 text-red-400" />
+                      <span className="font-medium">Estimated Dispersion</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showPlume}
+                      onChange={(e) => setShowPlume(e.target.checked)}
+                      className="rounded accent-red-500 cursor-pointer w-3.5 h-3.5"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"></span>
+                      <span className="font-medium">Community Exposure</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showExposure}
+                      onChange={(e) => setShowExposure(e.target.checked)}
+                      className="rounded accent-cyan-400 cursor-pointer w-3.5 h-3.5"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-medium">OSM Context</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showOsmContext}
+                      onChange={(e) => setShowOsmContext(e.target.checked)}
+                      className="rounded accent-amber-400 cursor-pointer w-3.5 h-3.5"
+                    />
+                  </label>
+                </div>
               </div>
             </div>
           )}
