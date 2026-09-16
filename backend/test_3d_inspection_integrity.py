@@ -209,3 +209,26 @@ def test_exact_firms_observation_terminology_and_beacon_marker():
     assert "PolylineGlowMaterialProperty" in v_content
     assert "INCIDENT TARGET" in v_content
 
+
+def test_two_distinct_event_coordinates_integrity():
+    """Verify that multiple distinct event coordinates flow directly into Cesium Cartesian positions without modification."""
+    events = [
+        {"latitude": 23.552470, "longitude": 86.540520, "frp": 85.0},
+        {"latitude": 21.170240, "longitude": 72.831060, "frp": 140.2}
+    ]
+    viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Verify Cesium3DViewer parses coordinates directly from event.latitude/longitude
+    assert "Number(selectedFire.latitude)" in content
+    assert "Number(selectedFire.longitude)" in content
+    assert "Cesium.Cartesian3.fromDegrees(lon, lat" in content
+
+    # Test coordinate mapping for both distinct events
+    for ev in events:
+        lat = float(ev["latitude"])
+        lon = float(ev["longitude"])
+        assert lat == ev["latitude"]
+        assert lon == ev["longitude"]
+

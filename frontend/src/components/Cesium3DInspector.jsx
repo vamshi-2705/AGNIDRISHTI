@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Crosshair, Wind, FileText, MapPin, Building2, ShieldAlert, 
-  ExternalLink, Copy, Check, Clock, Radio, Activity, ArrowLeft
+  Copy, Check, Radio, ArrowLeft
 } from 'lucide-react';
 import { getDataHealth } from '../services/api';
 
@@ -13,6 +13,25 @@ function formatUtcTime(acqDate, acqTime) {
   return `${acqDate || '2026-01-01'} ${hh}:${mm} UTC`;
 }
 
+function formatConfidence(conf) {
+  if (conf == null || conf === '' || conf === 'null' || conf === 'undefined') {
+    return 'Not Available';
+  }
+  if (typeof conf === 'string') {
+    const lower = conf.toLowerCase().trim();
+    if (lower === 'h' || lower === 'high') return 'High (90–100%)';
+    if (lower === 'n' || lower === 'nominal') return 'Nominal (30–80%)';
+    if (lower === 'l' || lower === 'low') return 'Low (<30%)';
+    const num = Number(conf);
+    if (!isNaN(num)) return `${num}%`;
+    return conf;
+  }
+  if (typeof conf === 'number' && !isNaN(conf)) {
+    return `${conf}%`;
+  }
+  return 'Not Available';
+}
+
 export default function Cesium3DInspector({
   fire,
   activePlume,
@@ -22,7 +41,8 @@ export default function Cesium3DInspector({
   isPlumeActive,
   plumeLoading,
   onOpenReport,
-  onCollapse
+  onCollapse,
+  isFlying = false
 }) {
   const [copied, setCopied] = useState(false);
   const [dataHealth, setDataHealth] = useState(null);
@@ -39,32 +59,66 @@ export default function Cesium3DInspector({
 
   if (!fire) return null;
 
-  const lat = Number(fire.latitude);
-  const lon = Number(fire.longitude);
-  const frp = Number(fire.frp || 0).toFixed(1);
-  const baselineFrp = Number(fire.baseline_frp_mw || 45.0).toFixed(1);
-  const anomalyRatio = fire.anomaly_ratio ? Number(fire.anomaly_ratio).toFixed(2) : (Number(frp) / (Number(baselineFrp) || 1)).toFixed(2);
-  const isEmergency = fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY';
-  
-  // Format satellites
+  // Exact FIRMS coordinates (Section 7)
+  const latNum = Number(fire.latitude);
+  const lonNum = Number(fire.longitude);
+  const latStr = !isNaN(latNum) ? `${latNum.toFixed(6)}° N` : 'Not Available';
+  const lonStr = !isNaN(lonNum) ? `${lonNum.toFixed(6)}° E` : 'Not Available';
+
+  // FRP & Baseline Consistency (Section 16 & 17)
+  const frpNum = Number(fire.frp);
+  const frpDisplay = !isNaN(frpNum) && frpNum > 0 ? `${frpNum.toFixed(1)} MW` : 'Not Available';
+  const baselineFrpNum = Number(fire.baseline_frp_mw);
+  const baselineFrpDisplay = !isNaN(baselineFrpNum) && baselineFrpNum > 0 ? `${baselineFrpNum.toFixed(1)} MW` : '45.0 MW';
+
+  let anomalyRatioDisplay = '1.00×';
+  if (fire.anomaly_ratio != null && !isNaN(Number(fire.anomaly_ratio))) {
+    anomalyRatioDisplay = `${Number(fire.anomaly_ratio).toFixed(2)}×`;
+  } else if (!isNaN(frpNum) && !isNaN(baselineFrpNum) && baselineFrpNum > 0) {
+    anomalyRatioDisplay = `${(frpNum / baselineFrpNum).toFixed(2)}×`;
+  }
+
+  const isEmergency = Boolean(fire.is_emergency || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY');
+
+  // Satellites display
   const satellites = Array.isArray(fire.satellites) && fire.satellites.length > 0
     ? fire.satellites.join(' + ')
-    : fire.satellite || 'SNPP + NOAA-20 + NOAA-21';
+    : fire.satellites_display || fire.satellite || 'NOAA-21 / VIIRS';
 
   const observationCount = fire.history && fire.history.length > 0
     ? fire.history.length
     : fire.temporal_profile?.observations_last_30d || 1;
 
+  // Real Wind & Estimated Dispersion Data (Sections 11 & 12)
+  const windSpeedVal = fire.wind_speed_kmh != null ? Number(fire.wind_speed_kmh) : (activePlume?.properties?.wind_speed_kmh != null ? Number(activePlume.properties.wind_speed_kmh) : null);
+  const windBearingVal = fire.wind_direction_deg != null ? Number(fire.wind_direction_deg) : (activePlume?.properties?.downwind_azimuth_deg != null ? Number(activePlume.properties.downwind_azimuth_deg) : null);
+  const hasWindData = windSpeedVal != null && !isNaN(windSpeedVal) && windBearingVal != null && !isNaN(windBearingVal);
+
+  const dispDistVal = activePlume?.properties?.hazard_length_km != null ? Number(activePlume.properties.hazard_length_km) : (fire.hazard_radius_km != null ? Number(fire.hazard_radius_km) : null);
+  const hasDispersion = dispDistVal != null && !isNaN(dispDistVal);
+
+  // Facility Context (Section 9)
+  const hasFacility = fire.facility_name && fire.facility_name !== 'None' && fire.facility_name !== 'null' && String(fire.facility_name).trim().length > 0;
+
+  // Exposure Context (Section 14)
+  const communityExposure = fire.community_exposure || activePlume?.properties?.community_exposure || null;
+  const hasExposureData = communityExposure && (
+    (communityExposure.affected_settlements_count != null && communityExposure.affected_settlements_count > 0) ||
+    (communityExposure.affected_schools_count != null && communityExposure.affected_schools_count > 0) ||
+    (communityExposure.affected_hospitals_count != null && communityExposure.affected_hospitals_count > 0) ||
+    (communityExposure.intersecting_settlements && communityExposure.intersecting_settlements.length > 0)
+  );
+
   const handleCopyCoords = () => {
-    navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    if (!isNaN(latNum) && !isNaN(lonNum)) {
+      navigator.clipboard.writeText(`${latNum.toFixed(6)}, ${lonNum.toFixed(6)}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }
   };
 
-  const communityExposure = fire.community_exposure || activePlume?.properties?.community_exposure || null;
-
   return (
-    <aside className="w-80 h-full flex flex-col bg-[#0b101b]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-20 text-slate-100 select-none overflow-hidden animate-in slide-in-from-right duration-300">
+    <aside className={`w-80 h-full flex flex-col bg-[#0b101b]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-20 text-slate-100 select-none overflow-hidden transition-all duration-700 ${isFlying ? 'opacity-40 pointer-events-none scale-[0.99]' : 'opacity-100'}`}>
       {/* Header */}
       <div className="p-3 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
         <div className="flex items-center gap-2">
@@ -92,7 +146,7 @@ export default function Cesium3DInspector({
         <div className="p-2.5 rounded-lg bg-white/[0.04] border border-white/10 space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10.5px] text-slate-300 font-bold">
-              {fire.event_id || fire.fire_id}
+              {fire.event_id || fire.fire_id || 'AGNI-LIVE-EVENT'}
             </span>
             <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider uppercase border ${
               isEmergency 
@@ -104,7 +158,7 @@ export default function Cesium3DInspector({
           </div>
 
           <div className="text-xs font-bold text-white font-sans truncate">
-            {fire.facility_name && fire.facility_name !== 'None' ? fire.facility_name : 'Thermal Radiative Target'}
+            {hasFacility ? fire.facility_name : 'Satellite Thermal Target'}
           </div>
 
           <div className="text-[9.5px] text-slate-400 font-mono">
@@ -116,18 +170,18 @@ export default function Cesium3DInspector({
         <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-2 font-mono text-[11px]">
           <div className="flex items-center gap-1.5 text-slate-400 uppercase text-[10px] font-semibold tracking-wider font-sans border-b border-white/[0.06] pb-1.5">
             <Radio className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Thermal Radiative Observation</span>
+            <span>THERMAL RADIATIVE OBSERVATION</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-0.5">
             <div>
               <span className="text-slate-400 text-[10px] block">FIRE RADIATIVE POWER</span>
-              <span className="text-base font-bold text-orange-400">{frp} MW</span>
+              <span className="text-base font-bold text-orange-400">{frpDisplay}</span>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] block">ANOMALY RATIO</span>
               <span className={`text-base font-bold ${isEmergency ? 'text-red-400' : 'text-cyan-300'}`}>
-                {anomalyRatio}×
+                {anomalyRatioDisplay}
               </span>
             </div>
           </div>
@@ -143,18 +197,16 @@ export default function Cesium3DInspector({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Acquisition Time:</span>
-              <span className="text-slate-200">{formatUtcTime(fire.acq_date, fire.acq_time)}</span>
+              <span className="text-slate-200">{observationTime}</span>
             </div>
-            {fire.confidence && (
-              <div className="flex justify-between">
-                <span className="text-slate-400">Confidence:</span>
-                <span className="text-emerald-400 font-semibold">{fire.confidence}</span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span className="text-slate-400">Confidence:</span>
+              <span className="text-emerald-400 font-semibold">{formatConfidence(fire.confidence)}</span>
+            </div>
           </div>
         </div>
 
-        {/* 3. Exact Geographic Coordinates */}
+        {/* 3. Exact Geographic Coordinates (Section 7) */}
         <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-2">
           <div className="flex items-center justify-between text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider">
             <span className="flex items-center gap-1.5">
@@ -173,23 +225,23 @@ export default function Cesium3DInspector({
           <div className="grid grid-cols-2 gap-2 font-mono text-[11px] pt-0.5">
             <div className="p-1.5 rounded bg-white/[0.03] border border-white/[0.05]">
               <span className="text-slate-400 text-[9.5px] block">LATITUDE</span>
-              <span className="text-slate-100 font-bold">{lat.toFixed(6)}° N</span>
+              <span className="text-slate-100 font-bold">{latStr}</span>
             </div>
             <div className="p-1.5 rounded bg-white/[0.03] border border-white/[0.05]">
               <span className="text-slate-400 text-[9.5px] block">LONGITUDE</span>
-              <span className="text-slate-100 font-bold">{lon.toFixed(6)}° E</span>
+              <span className="text-slate-100 font-bold">{lonStr}</span>
             </div>
           </div>
         </div>
 
-        {/* 4. Facility / Location Context */}
+        {/* 4. Facility / Location Context (Section 9 & 10) */}
         <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10 space-y-1.5">
           <div className="flex items-center gap-1.5 text-slate-400 uppercase text-[9.5px] font-semibold tracking-wider font-sans border-b border-white/[0.06] pb-1">
             <Building2 className="w-3.5 h-3.5 text-slate-400" />
-            <span>Facility / Location Context</span>
+            <span>FACILITY / LOCATION CONTEXT</span>
           </div>
 
-          {fire.facility_name && fire.facility_name !== 'None' && fire.facility_name !== 'null' ? (
+          {hasFacility ? (
             <div className="space-y-1.5 text-[10px]">
               <div className="flex items-center gap-1.5">
                 <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-600/60 font-mono text-[9px] font-bold">
@@ -199,93 +251,101 @@ export default function Cesium3DInspector({
               </div>
               <div className="flex justify-between font-mono">
                 <span className="text-slate-400">Ground Context:</span>
-                <span className="text-slate-200">OpenStreetMap verified</span>
+                <span className="text-slate-200">OpenStreetMap Verified Perimeter</span>
               </div>
               <div className="flex justify-between font-mono">
                 <span className="text-slate-400">Category:</span>
-                <span className="text-slate-200">{fire.location?.region || 'Industrial Sector Target'}</span>
+                <span className="text-slate-200">{fire.location?.region || fire.category || 'Industrial Facility'}</span>
               </div>
               <div className="flex justify-between font-mono">
                 <span className="text-slate-400">Baseline FRP:</span>
-                <span className="text-amber-300 font-semibold">{baselineFrp} MW</span>
+                <span className="text-amber-300 font-semibold">{baselineFrpDisplay}</span>
               </div>
             </div>
           ) : (
             <div className="space-y-1 text-[10px] py-1">
               <div className="flex items-center justify-between font-mono">
                 <span className="text-slate-400">FACILITY CONTEXT:</span>
-                <span className="text-amber-300/90 font-semibold">Not verified</span>
+                <span className="text-amber-400 font-semibold">NOT VERIFIED</span>
               </div>
               <div className="text-[9.5px] text-slate-500 font-mono">
-                No registered industrial facility at coordinates
+                No registered industrial facility at observation coordinate
               </div>
             </div>
           )}
         </div>
 
-        {/* 5. Surface Wind & Estimated Dispersion */}
+        {/* 5. Surface Wind & Estimated Dispersion (Section 11 & 12) */}
         <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-2">
           <div className="flex items-center gap-1.5 text-slate-400 uppercase text-[10px] font-semibold tracking-wider font-sans border-b border-white/[0.06] pb-1.5">
             <Wind className="w-3.5 h-3.5 text-slate-400" />
-            <span>Surface Wind & Estimated Dispersion</span>
+            <span>SURFACE WIND & ESTIMATED DISPERSION</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-[10.5px] font-mono">
-            <div>
-              <span className="text-slate-400 text-[9.5px] block">WIND VELOCITY</span>
-              <span className="text-slate-200 font-medium">
-                {fire.wind_speed_kmh || activePlume?.properties?.wind_speed_kmh || 18.0} km/h
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-400 text-[9.5px] block">WIND BEARING</span>
-              <span className="text-slate-200 font-medium">
-                {fire.wind_direction_deg || activePlume?.properties?.downwind_azimuth_deg || 225}°
-              </span>
-            </div>
-          </div>
+          {hasWindData ? (
+            <>
+              <div className="grid grid-cols-2 gap-2 text-[10.5px] font-mono">
+                <div>
+                  <span className="text-slate-400 text-[9.5px] block">WIND VELOCITY</span>
+                  <span className="text-slate-200 font-medium">
+                    {windSpeedVal.toFixed(1)} km/h
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[9.5px] block">WIND BEARING</span>
+                  <span className="text-slate-200 font-medium">
+                    {Math.round(windBearingVal)}°
+                  </span>
+                </div>
+              </div>
 
-          <div className="pt-1.5 border-t border-white/[0.06] space-y-1 text-[10.5px] font-mono">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Estimated Dispersion:</span>
-              <span className="text-slate-200 font-medium">
-                {activePlume?.properties?.hazard_length_km || fire.hazard_radius_km || 5.0} km downwind
-              </span>
+              <div className="pt-1.5 border-t border-white/[0.06] space-y-1 text-[10.5px] font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Estimated Dispersion:</span>
+                  <span className="text-slate-200 font-medium">
+                    {hasDispersion ? `${dispDistVal.toFixed(1)} km downwind` : 'Directional transport corridor'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Hazard Tier:</span>
+                  <span className={`font-semibold ${isEmergency ? 'text-red-300' : 'text-amber-300'}`}>
+                    {activePlume?.properties?.hazard_tier || (isEmergency ? 'TIER-1 CRITICAL DISPERSION' : 'OPERATIONAL DISPERSION')}
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-[10px] font-mono text-amber-400/90 py-1">
+              WIND DATA UNAVAILABLE
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Hazard Tier:</span>
-              <span className={`font-semibold ${isEmergency ? 'text-red-300' : 'text-amber-300'}`}>
-                {activePlume?.properties?.hazard_tier || (isEmergency ? 'TIER-1 CRITICAL DISPERSION' : 'OPERATIONAL DISPERSION')}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* 6. Estimated Community Exposure */}
+        {/* 6. Estimated Community Exposure (Section 14) */}
         <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-2">
           <div className="flex items-center gap-1.5 text-slate-400 uppercase text-[10px] font-semibold tracking-wider font-sans border-b border-white/[0.06] pb-1.5">
             <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-            <span>Estimated Community Exposure</span>
+            <span>ESTIMATED COMMUNITY EXPOSURE</span>
           </div>
 
-          {communityExposure ? (
+          {hasExposureData ? (
             <div className="grid grid-cols-3 gap-1.5 text-center font-mono text-[10.5px]">
               <div className="p-1.5 rounded bg-white/[0.03]">
                 <span className="text-[9px] text-slate-400 block font-sans">SETTLEMENTS</span>
-                <span className="font-bold text-sky-300">{communityExposure.affected_settlements_count ?? 0}</span>
+                <span className="font-bold text-sky-300">{communityExposure.affected_settlements_count ?? (communityExposure.intersecting_settlements?.length || 0)}</span>
               </div>
               <div className="p-1.5 rounded bg-white/[0.03]">
                 <span className="text-[9px] text-slate-400 block font-sans">SCHOOLS</span>
-                <span className="font-bold text-emerald-300">{communityExposure.affected_schools_count ?? 0}</span>
+                <span className="font-bold text-emerald-300">{communityExposure.affected_schools_count ?? (communityExposure.intersecting_schools?.length || 0)}</span>
               </div>
               <div className="p-1.5 rounded bg-white/[0.03]">
                 <span className="text-[9px] text-slate-400 block font-sans">HOSPITALS</span>
-                <span className="font-bold text-rose-300">{communityExposure.affected_hospitals_count ?? 0}</span>
+                <span className="font-bold text-rose-300">{communityExposure.affected_hospitals_count ?? (communityExposure.intersecting_hospitals?.length || 0)}</span>
               </div>
             </div>
           ) : (
             <div className="text-[10px] font-mono text-slate-400 py-1">
-              NO DOWNWIND RECEPTOR INTERSECTIONS DETECTED
+              EXPOSURE DATA: NOT AVAILABLE
             </div>
           )}
         </div>
