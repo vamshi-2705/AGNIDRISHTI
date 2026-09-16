@@ -148,3 +148,57 @@ def test_site_level_inspection_range():
 
     # Verify site-level range (1600m)
     assert "1600" in content
+
+
+def test_multistage_cinematic_camera_flight():
+    """Verify reusable flyToIncident function with 4-stage cinematic flight and quadratic easing."""
+    viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "flyToIncident" in content
+    assert "QUADRATIC_IN_OUT" in content
+    assert "QUADRATIC_OUT" in content
+    assert "STAGE 1" in content
+    assert "STAGE 2" in content
+    assert "STAGE 3" in content
+    assert "STAGE 4" in content
+
+
+def test_photorealistic_and_osm_buildings_fallback():
+    """Verify Cesium Google 3D tileset creation with automatic OSM buildings and terrain fallback."""
+    viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "createGooglePhotorealistic3DTileset" in content
+    assert "createOsmBuildingsAsync" in content
+    assert "createWorldTerrainAsync" in content
+    assert "tilesetMode" in content
+    assert "tilesetStatusText" in content
+
+
+def test_camera_collision_prevention_enabled():
+    """Verify camera collision detection is enabled to prevent camera sinking underground."""
+    viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    assert "enableCollisionDetection = true" in content
+
+
+def test_exact_firms_observation_terminology_and_beacon_marker():
+    """Verify authoritative FIRMS terminology and vertical glowing locator beam."""
+    viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
+    inspector_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DInspector.jsx")
+
+    with open(viewer_path, "r", encoding="utf-8") as f:
+        v_content = f.read()
+    with open(inspector_path, "r", encoding="utf-8") as f:
+        i_content = f.read()
+
+    assert "EXACT FIRMS OBSERVATION" in v_content
+    assert "EXACT FIRMS OBSERVATION" in i_content
+    assert "PolylineGlowMaterialProperty" in v_content
+    assert "INCIDENT TARGET" in v_content
+

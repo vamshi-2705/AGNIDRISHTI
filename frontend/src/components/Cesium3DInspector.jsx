@@ -159,7 +159,7 @@ export default function Cesium3DInspector({
           <div className="flex items-center justify-between text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              <span>EXACT LOCATION (WGS84)</span>
+              <span>EXACT FIRMS OBSERVATION (WGS84)</span>
             </span>
             <button
               onClick={handleCopyCoords}
