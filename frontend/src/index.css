@@ -319,3 +319,11 @@
     animation: none !important;
   }
 }
+
+/* Suppress Cesium ion default access token warning banner and raw credit overlays */
+.cesium-credit-banner,
+.cesium-widget-credits,
+.cesium-credit-textContainer {
+  display: none !important;
+}
+

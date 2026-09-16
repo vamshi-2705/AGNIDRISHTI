@@ -52,15 +52,16 @@ export default function Cesium3DViewer({
   const cameraListenerRef = useRef(null);
   const [viewer, setViewer] = useState(null);
   const [initError, setInitError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingPhase, setLoadingPhase] = useState('terrain'); // 'terrain' | 'imagery' | 'tileset' | 'regional' | 'approach' | 'locating' | 'located'
-  const [loadingMessage, setLoadingMessage] = useState('INITIALIZING 3D GEOSPATIAL ENGINE...');
+
+  // Non-blocking cinematic flight HUD state (Sections 1, 2, 26)
+  const [isFlying, setIsFlying] = useState(false);
+  const [flightStage, setFlightStage] = useState('');
   const [inspectorExpanded, setInspectorExpanded] = useState(true);
   const [activeCard, setActiveCard] = useState(null); // { type: 'thermal' | 'facility' | 'receptor', data: ... }
 
   // 3D Data Source Mode: 'photorealistic' | 'osm_buildings' | 'terrain_imagery'
   const [tilesetMode, setTilesetMode] = useState('loading');
-  const [tilesetStatusText, setTilesetStatusText] = useState('Initializing 3D Geospatial Engine...');
+  const [tilesetStatusText, setTilesetStatusText] = useState('Terrain + Buildings');
   const tilesetRef = useRef(null);
   const terrainProviderRef = useRef(null);
 
@@ -139,7 +140,7 @@ export default function Cesium3DViewer({
     }));
   }, []);
 
-  // Multi-Stage Cinematic Camera Flight: Regional -> Industrial Area -> Low-Altitude 3D Approach -> Exact FIRMS Inspection
+  // Multi-Stage Cinematic Camera Flight: Continuous, Map Always Visible (Sections 1, 6, 7, 8)
   const flyToIncident = useCallback((fire, options = {}) => {
     const v = viewerRef.current || viewer;
     if (!v || !fire) return;
@@ -170,60 +171,65 @@ export default function Cesium3DViewer({
     const currentPos = v.camera.position;
     const distToTarget = Cesium.Cartesian3.distance(currentPos, targetPos);
 
-    // If already in low-altitude vicinity (< 1200m), execute smooth re-center inspection directly
+    // Destination preloading while camera flies (Section 9)
+    if (tilesetRef.current) {
+      try {
+        tilesetRef.current.preloadFlightDestinations = true;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // If already in low-altitude vicinity (< 1200m), execute smooth direct re-center inspection
     if (distToTarget < 1200 && !options.forceFullFlight) {
-      setLoadingPhase('locating');
-      setLoadingMessage('RECENTERING ON EXACT FIRMS OBSERVATION...');
-      setIsLoading(true);
+      setIsFlying(true);
+      setFlightStage('STAGE 4 — RECENTERING INSPECTION');
 
       const inspectSphere = new Cesium.BoundingSphere(targetPos, 20);
-      const targetRange = 240; // 150-300m above incident (Section 3 Stage 4)
+      const targetRange = 240; // 150-300m range above incident
 
       v.camera.flyToBoundingSphere(inspectSphere, {
         offset: new Cesium.HeadingPitchRange(
           headingRad,
-          Cesium.Math.toRadians(-58), // Low-angle inspection pitch (between -55° and -65°)
+          Cesium.Math.toRadians(-58), // Low-angle inspection pitch (-55° to -65°)
           targetRange
         ),
-        duration: 1.5,
+        duration: 1.2,
         easingFunction: Cesium.EasingFunction.QUADRATIC_OUT,
         complete: () => {
           if (flightIdRef.current !== currentFlightId) return;
           isInspectingRef.current = true;
-          setLoadingPhase('located');
-          setLoadingMessage('3D CONTEXT READY');
+          setIsFlying(false);
+          setFlightStage('INSPECTION READY');
           syncTelemetryWithEvent(lat, lon);
-          setTimeout(() => setIsLoading(false), 450);
         }
       });
       return;
     }
 
-    // MULTI-STAGE CINEMATIC FLIGHT SEQUENCE (Section 3)
-    setIsLoading(true);
-    setLoadingPhase('regional');
-    setLoadingMessage('STAGE 1/4: REGIONAL GEOGRAPHIC CONTEXT...');
+    // CONTINUOUS 4-STAGE CINEMATIC FLIGHT — MAP REMAINS 100% VISIBLE (Sections 1, 7, 8)
+    setIsFlying(true);
+    setFlightStage('STAGE 1 — REGIONAL APPROACH');
 
-    // STAGE 1 — REGIONAL APPROACH (~38km altitude, 2.0s duration)
-    // Reference range: 1600m site inspection benchmark / -35 deg oblique profile
+    // STAGE 1 — REGIONAL APPROACH (Altitude: ~12km, Pitch: -50°, Duration: 1.8s)
+    // Benchmark references: 1600 site inspection baseline / -35 oblique reference
     v.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.22, 38000),
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.08, 12000),
       orientation: {
-        heading: Cesium.Math.toRadians(0),
+        heading: headingRad,
         pitch: Cesium.Math.toRadians(-50),
         roll: 0.0
       },
-      duration: 2.0,
+      duration: 1.8,
       easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
       complete: () => {
         if (flightIdRef.current !== currentFlightId) return;
 
-        // STAGE 2 — INDUSTRIAL AREA APPROACH (~3.5km altitude, -45° pitch, 1.8s duration)
-        setLoadingPhase('approach');
-        setLoadingMessage('STAGE 2/4: INDUSTRIAL AREA APPROACH...');
+        // STAGE 2 — INDUSTRIAL AREA APPROACH (Altitude: ~3km, Pitch: -45°, Duration: 1.8s)
+        setFlightStage('STAGE 2 — INDUSTRIAL AREA APPROACH');
 
         v.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(lon - 0.012, lat - 0.022, 3500),
+          destination: Cesium.Cartesian3.fromDegrees(lon - 0.010, lat - 0.018, 3000),
           orientation: {
             heading: headingRad,
             pitch: Cesium.Math.toRadians(-45),
@@ -234,12 +240,11 @@ export default function Cesium3DViewer({
           complete: () => {
             if (flightIdRef.current !== currentFlightId) return;
 
-            // STAGE 3 — LOW-ALTITUDE 3D APPROACH (~500m altitude, -55° pitch, 1.6s duration)
-            setLoadingPhase('locating');
-            setLoadingMessage('STAGE 3/4: REVEALING 3D STRUCTURES & TERRAIN...');
+            // STAGE 3 — LOW-ALTITUDE 3D APPROACH (Altitude: ~550m, Pitch: -55°, Duration: 1.6s)
+            setFlightStage('STAGE 3 — LOW-ALTITUDE APPROACH');
 
             v.camera.flyTo({
-              destination: Cesium.Cartesian3.fromDegrees(lon - 0.0022, lat - 0.0035, 520),
+              destination: Cesium.Cartesian3.fromDegrees(lon - 0.0020, lat - 0.0030, 550),
               orientation: {
                 heading: headingRad,
                 pitch: Cesium.Math.toRadians(-55),
@@ -250,25 +255,24 @@ export default function Cesium3DViewer({
               complete: () => {
                 if (flightIdRef.current !== currentFlightId) return;
 
-                // STAGE 4 — FINAL INSPECTION POSITION (150-300m above incident, pitch -58°, centered)
-                setLoadingPhase('located');
-                setLoadingMessage('STAGE 4/4: FINAL 3D INSPECTION VIEW...');
+                // STAGE 4 — FINAL INSPECTION POSITION (Range: 240m, Pitch: -58°, Duration: 1.2s)
+                setFlightStage('STAGE 4 — FINAL INSPECTION');
 
                 const finalSphere = new Cesium.BoundingSphere(targetPos, 20);
                 v.camera.flyToBoundingSphere(finalSphere, {
                   offset: new Cesium.HeadingPitchRange(
                     headingRad,
-                    Cesium.Math.toRadians(-58), // -58° oblique pitch looking toward horizon
-                    240 // 240m range above incident
+                    Cesium.Math.toRadians(-58), // Low-angle inspection looking toward horizon
+                    240 // 240m range above incident (within 150m-300m)
                   ),
-                  duration: 1.4,
+                  duration: 1.2,
                   easingFunction: Cesium.EasingFunction.QUADRATIC_OUT,
                   complete: () => {
                     if (flightIdRef.current !== currentFlightId) return;
                     isInspectingRef.current = true;
-                    setLoadingMessage('3D CONTEXT READY');
+                    setIsFlying(false);
+                    setFlightStage('INSPECTION READY');
                     syncTelemetryWithEvent(lat, lon);
-                    setTimeout(() => setIsLoading(false), 500);
                   }
                 });
               }
@@ -368,10 +372,10 @@ export default function Cesium3DViewer({
       const lon = Number(selectedFire.longitude);
       v.camera.cancelFlight();
       v.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.25, 48000), // Regional View (~48km)
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.15, 24000), // Regional View (~24km)
         orientation: {
           heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-52),
+          pitch: Cesium.Math.toRadians(-50),
           roll: 0.0
         },
         duration: 1.8,
@@ -483,12 +487,10 @@ export default function Cesium3DViewer({
 
     const initCesium = async () => {
       try {
-        setLoadingPhase('terrain');
-        setLoadingMessage('LOADING REALISTIC TERRAIN & SATELLITE ENGINE...');
-
+        // Configure Cesium Ion Token if provided (Section 13)
         const ionToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
-        if (ionToken) {
-          Cesium.Ion.defaultAccessToken = ionToken;
+        if (ionToken && typeof ionToken === 'string' && ionToken.trim()) {
+          Cesium.Ion.defaultAccessToken = ionToken.trim();
         }
 
         // Setup Esri World Imagery (high-resolution authentic satellite base layer)
@@ -534,6 +536,11 @@ export default function Cesium3DViewer({
           }
         });
 
+        // Hide default Cesium credit banner container to avoid token warning overlays
+        if (viewerInstance.creditDisplay?.container) {
+          viewerInstance.creditDisplay.container.style.display = 'none';
+        }
+
         // Enable full native 3D camera controller with anti-underground collision detection
         const controller = viewerInstance.scene.screenSpaceCameraController;
         controller.enableRotate = true;
@@ -541,7 +548,7 @@ export default function Cesium3DViewer({
         controller.enableZoom = true;
         controller.enableTilt = true;
         controller.enableLook = true;
-        controller.enableCollisionDetection = true; // Prevents camera sinking underground (Section 14)
+        controller.enableCollisionDetection = true; // Prevents camera sinking underground (Section 22)
         controller.minimumZoomDistance = 35.0; // Respect terrain & structures surface
         controller.maximumZoomDistance = 30000000.0;
         controller.inertiaSpin = 0.85;
@@ -551,79 +558,6 @@ export default function Cesium3DViewer({
         // Depth testing & atmospheric settings
         viewerInstance.scene.globe.depthTestAgainstTerrain = false;
         viewerInstance.scene.globe.enableLighting = false;
-
-        // Load 3D Tileset: Option A (Google Photorealistic) -> Option B (OSM Buildings) -> Option C (Terrain + Imagery)
-        let loadedTileset = null;
-        let mode = 'terrain_imagery';
-        let statusText = 'Terrain + Satellite Surface';
-
-        const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-        if (googleMapsKey) {
-          try {
-            setLoadingPhase('tileset');
-            setLoadingMessage('CONNECTING TO GOOGLE PHOTOREALISTIC 3D TILES...');
-            const googleTileset = await Cesium.createGooglePhotorealistic3DTileset({
-              key: googleMapsKey,
-              onlyUsingWithGoogleGeocoder: true
-            });
-            viewerInstance.scene.primitives.add(googleTileset);
-            loadedTileset = googleTileset;
-            mode = 'photorealistic';
-            statusText = 'Photorealistic 3D';
-          } catch (gErr) {
-            console.warn('[AGNIDRISHTI 3D] Google 3D Tiles unavailable, falling back to OSM Buildings:', gErr.message);
-          }
-        }
-
-        // Option B Fallback: OSM 3D Buildings
-        if (!loadedTileset) {
-          try {
-            setLoadingPhase('tileset');
-            setLoadingMessage('LOADING REALISTIC 3D BUILDINGS & STRUCTURES...');
-            const osmBuildings = await Cesium.createOsmBuildingsAsync({
-              defaultColor: Cesium.Color.fromCssColorString('#94a3b8').withAlpha(0.85)
-            });
-            viewerInstance.scene.primitives.add(osmBuildings);
-            loadedTileset = osmBuildings;
-            mode = 'osm_buildings';
-            statusText = 'Terrain + Buildings';
-          } catch (osmErr) {
-            console.warn('[AGNIDRISHTI 3D] OSM Buildings fallback to Terrain + Imagery:', osmErr.message);
-            mode = 'terrain_imagery';
-            statusText = 'Terrain + Satellite Surface';
-          }
-        }
-
-        tilesetRef.current = loadedTileset;
-        setTilesetMode(mode);
-        setTilesetStatusText(statusText);
-
-        // World Terrain loading
-        if (ionToken) {
-          try {
-            const terrain = await Cesium.createWorldTerrainAsync();
-            viewerInstance.terrainProvider = terrain;
-            terrainProviderRef.current = terrain;
-          } catch (terrainErr) {
-            console.warn('[AGNIDRISHTI 3D] World Terrain fallback to ellipsoid:', terrainErr.message);
-            terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
-          }
-        } else {
-          terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
-        }
-
-        // Optional OpenStreetMap road overlay layer
-        try {
-          const roadProvider = new Cesium.UrlTemplateImageryProvider({
-            url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: ['a', 'b', 'c']
-          });
-          const roadLayer = new Cesium.ImageryLayer(roadProvider, { alpha: 0.65, show: false });
-          viewerInstance.imageryLayers.add(roadLayer);
-          roadLayerRef.current = roadLayer;
-        } catch (e) {
-          console.warn('[AGNIDRISHTI 3D] Road layer error:', e);
-        }
 
         // Initialize DataSources for layered geospatial management
         const thermalDS = new Cesium.CustomDataSource('thermal_hotspots');
@@ -644,7 +578,28 @@ export default function Cesium3DViewer({
         window.__viewer = viewerInstance;
         window.__Cesium = Cesium;
 
-        // Camera changed telemetry tracking with exact FIRMS lock synchronization (Section 12)
+        // Set initial camera view and start cinematic flight immediately (Sections 9 & 10)
+        if (selectedFireRef.current) {
+          const sFire = selectedFireRef.current;
+          const sLat = Number(sFire.latitude);
+          const sLon = Number(sFire.longitude);
+          if (!isNaN(sLat) && !isNaN(sLon)) {
+            viewerInstance.camera.setView({
+              destination: Cesium.Cartesian3.fromDegrees(sLon, sLat - 0.15, 18000),
+              orientation: {
+                heading: Cesium.Math.toRadians(0),
+                pitch: Cesium.Math.toRadians(-50),
+                roll: 0.0
+              }
+            });
+
+            // Start camera flight immediately — no blocking!
+            flyToIncident(sFire, { forceFullFlight: true });
+            setActiveCard({ type: 'thermal', data: sFire });
+          }
+        }
+
+        // Camera changed telemetry tracking with exact FIRMS lock synchronization (Section 5)
         const updateTelemetry = () => {
           if (!viewerInstance || viewerInstance.isDestroyed()) return;
           try {
@@ -720,37 +675,93 @@ export default function Cesium3DViewer({
         }, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
 
         screenHandlerRef.current = handler;
-
-        // Perform initial multi-stage cinematic approach to selected incident
-        if (selectedFireRef.current) {
-          const sFire = selectedFireRef.current;
-          const sLat = Number(sFire.latitude);
-          const sLon = Number(sFire.longitude);
-          if (!isNaN(sLat) && !isNaN(sLon)) {
-            // Start at regional high altitude
-            viewerInstance.camera.setView({
-              destination: Cesium.Cartesian3.fromDegrees(sLon, sLat - 0.28, 48000),
-              orientation: {
-                heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-52),
-                roll: 0.0
-              }
-            });
-
-            flyToIncident(sFire, { forceFullFlight: true });
-            setActiveCard({ type: 'thermal', data: sFire });
-          } else {
-            setIsLoading(false);
-          }
-        } else {
-          setIsLoading(false);
-        }
-
         setViewer(viewerInstance);
+
+        // Asynchronously stream 3D Tiles and Terrain in parallel (Sections 9, 10, 11)
+        (async () => {
+          let loadedTileset = null;
+          let mode = 'terrain_imagery';
+          let statusText = 'Terrain + Satellite Surface';
+
+          const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+          if (googleMapsKey) {
+            try {
+              const googleTileset = await Cesium.createGooglePhotorealistic3DTileset({
+                key: googleMapsKey,
+                onlyUsingWithGoogleGeocoder: true
+              });
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                viewerInstance.scene.primitives.add(googleTileset);
+                loadedTileset = googleTileset;
+                mode = 'photorealistic';
+                statusText = 'Photorealistic 3D';
+              }
+            } catch (gErr) {
+              console.warn('[AGNIDRISHTI 3D] Google 3D Tiles unavailable, using OSM Buildings:', gErr.message);
+            }
+          }
+
+          // Option B Fallback: OSM 3D Buildings
+          if (!loadedTileset && viewerInstance && !viewerInstance.isDestroyed()) {
+            try {
+              const osmBuildings = await Cesium.createOsmBuildingsAsync({
+                defaultColor: Cesium.Color.fromCssColorString('#94a3b8').withAlpha(0.85)
+              });
+              viewerInstance.scene.primitives.add(osmBuildings);
+              loadedTileset = osmBuildings;
+              mode = 'osm_buildings';
+              statusText = 'Terrain + Buildings';
+            } catch (osmErr) {
+              console.warn('[AGNIDRISHTI 3D] OSM Buildings fallback to Terrain + Imagery:', osmErr.message);
+              mode = 'terrain_imagery';
+              statusText = 'Terrain + Satellite Surface';
+            }
+          }
+
+          if (loadedTileset) {
+            try {
+              loadedTileset.preloadFlightDestinations = true;
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          tilesetRef.current = loadedTileset;
+          setTilesetMode(mode);
+          setTilesetStatusText(statusText);
+
+          // World Terrain loading
+          if (ionToken && viewerInstance && !viewerInstance.isDestroyed()) {
+            try {
+              const terrain = await Cesium.createWorldTerrainAsync();
+              viewerInstance.terrainProvider = terrain;
+              terrainProviderRef.current = terrain;
+            } catch (terrainErr) {
+              terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
+            }
+          } else {
+            terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
+          }
+
+          // Optional OpenStreetMap road overlay layer
+          if (viewerInstance && !viewerInstance.isDestroyed()) {
+            try {
+              const roadProvider = new Cesium.UrlTemplateImageryProvider({
+                url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c']
+              });
+              const roadLayer = new Cesium.ImageryLayer(roadProvider, { alpha: 0.65, show: false });
+              viewerInstance.imageryLayers.add(roadLayer);
+              roadLayerRef.current = roadLayer;
+            } catch (e) {
+              // ignore
+            }
+          }
+        })();
+
       } catch (err) {
         console.error('[AGNIDRISHTI 3D] Cesium initialization error:', err);
         setInitError(err.message || 'Unable to initialize 3D WebGL context.');
-        setIsLoading(false);
       }
     };
 
@@ -877,7 +888,7 @@ export default function Cesium3DViewer({
     }
   }, [viewer, selectedFire, locateTrigger, flyToIncident]);
 
-  // Exact FIRMS Incident Marker: Vertical Locator Beam + Bright Thermal Point + Ground Ring + Badge Label
+  // Exact FIRMS Incident Marker: Created IMMEDIATELY on selection (Section 14 & 15)
   useEffect(() => {
     const ds = thermalDataSourceRef.current;
     if (!ds) return;
@@ -885,7 +896,7 @@ export default function Cesium3DViewer({
 
     if (!selectedFire || !showThermal) return;
 
-    // Authoritative FIRMS coordinates (Section 1)
+    // Authoritative FIRMS coordinates (Section 4)
     const lat = Number(selectedFire.latitude);
     const lon = Number(selectedFire.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
@@ -893,9 +904,18 @@ export default function Cesium3DViewer({
     const color = getClassificationColor(selectedFire);
     const colorHex = selectedFire.is_emergency ? '#EF4444' : (selectedFire.category === 'PERSISTENT_INDUSTRIAL_FLARE' ? '#F59E0B' : '#EF4444');
 
-    const posGround = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
-    const posBeaconTop = Cesium.Cartesian3.fromDegrees(lon, lat, 180);
-    const posCore = Cesium.Cartesian3.fromDegrees(lon, lat, 14);
+    // Surface elevation information (Section 15)
+    const v = viewerRef.current || viewer;
+    let groundHeight = 0;
+    if (v?.scene?.globe) {
+      const carto = Cesium.Cartographic.fromDegrees(lon, lat);
+      groundHeight = v.scene.globe.getHeight(carto) || 0;
+      if (groundHeight < 0) groundHeight = 0;
+    }
+
+    const posGround = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight);
+    const posBeaconTop = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + 180);
+    const posCore = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + 14);
 
     // 1. Vertical Locator Beam (Pulsing glowing column connecting ground observation point to sky)
     const locatorBeam = ds.entities.add({
@@ -995,7 +1015,7 @@ export default function Cesium3DViewer({
     eventLabel._agniData = selectedFire;
   }, [viewer, selectedFire, showThermal]);
 
-  // Real OSM Facility Polygon & Footprint Overlay (Do NOT move FIRMS point to facility centroid - Section 8 & 9)
+  // Real OSM Facility Polygon & Footprint Overlay (Do NOT move FIRMS point to facility centroid - Section 16)
   useEffect(() => {
     const ds = facilityDataSourceRef.current;
     if (!ds) return;
@@ -1146,7 +1166,7 @@ export default function Cesium3DViewer({
     });
   }, [viewer, selectedFire, activePlume, showReceptors]);
 
-  // Error Fallback UI
+  // Error Fallback UI (Only shown if WebGL completely fails to initialize)
   if (initError) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-[#080b10] text-slate-200 p-6">
@@ -1171,42 +1191,28 @@ export default function Cesium3DViewer({
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#080b10] select-none">
-      {/* Cesium Canvas Container */}
+      {/* Cesium Canvas Container — ALWAYS 100% VISIBLE (Section 1) */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Phased Cinematic Loading Experience Overlay (Section 20) */}
-      {isLoading && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#080b10]/85 backdrop-blur-md select-none">
-          <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-[#0b101b]/95 border border-white/15 shadow-2xl max-w-sm w-full mx-4">
-            {/* Pulsing radar indicator */}
-            <div className="relative w-12 h-12 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 animate-ping" />
-              <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-              <Crosshair className="w-4 h-4 text-cyan-400 absolute" />
+      {/* Non-Blocking Compact Flight HUD — NO FULLSCREEN OVERLAY (Sections 1, 2, 26) */}
+      {isFlying && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none">
+          <div className="px-4 py-2 rounded-xl bg-[#0b101b]/85 border border-cyan-500/40 shadow-2xl backdrop-blur-md flex items-center gap-3">
+            <div className="relative w-3.5 h-3.5 flex items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-cyan-400 animate-ping opacity-70" />
+              <span className="relative w-2.5 h-2.5 rounded-full bg-cyan-400" />
             </div>
-
-            <div className="text-center space-y-1.5 w-full">
-              <div className="text-xs font-mono font-bold tracking-widest text-cyan-300 uppercase">
-                {loadingMessage || 'INITIALIZING 3D INSPECTION...'}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10.5px] font-mono font-bold tracking-wider text-cyan-300 uppercase">
+                  ● 3D INCIDENT APPROACH
+                </span>
+                <span className="text-[9.5px] font-mono text-slate-300 font-semibold px-1.5 py-0.2 rounded bg-cyan-950/70 border border-cyan-500/30">
+                  {flightStage}
+                </span>
               </div>
-              <div className="text-[10px] font-mono text-slate-400">
-                {selectedFire ? `${Number(selectedFire.latitude).toFixed(6)}° N, ${Number(selectedFire.longitude).toFixed(6)}° E` : 'WGS84 GEOGRAPHIC PROJECTION'}
-              </div>
-            </div>
-
-            {/* Stepped Progress Indicator */}
-            <div className="w-full grid grid-cols-4 gap-1 pt-2 border-t border-white/10 font-mono text-[8.5px] text-center">
-              <div className={`p-1 rounded transition-all ${loadingPhase === 'regional' ? 'bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold' : (loadingPhase !== 'terrain' && loadingPhase !== 'imagery' ? 'bg-emerald-950/60 text-emerald-300' : 'bg-white/[0.04] text-slate-400')}`}>
-                1. REGIONAL
-              </div>
-              <div className={`p-1 rounded transition-all ${loadingPhase === 'approach' ? 'bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold' : (loadingPhase === 'locating' || loadingPhase === 'located' ? 'bg-emerald-950/60 text-emerald-300' : 'bg-white/[0.04] text-slate-400')}`}>
-                2. INDUSTRIAL
-              </div>
-              <div className={`p-1 rounded transition-all ${loadingPhase === 'locating' ? 'bg-amber-950 text-amber-300 border border-amber-500/50 font-bold animate-pulse' : (loadingPhase === 'located' ? 'bg-emerald-950 text-emerald-300' : 'bg-white/[0.04] text-slate-400')}`}>
-                3. LOW-ALT
-              </div>
-              <div className={`p-1 rounded transition-all ${loadingPhase === 'located' ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50 font-bold' : 'bg-white/[0.04] text-slate-400'}`}>
-                4. INSPECT
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5">
+                {selectedFire ? `${Number(selectedFire.latitude).toFixed(6)}° N   ${Number(selectedFire.longitude).toFixed(6)}° E` : ''}
               </div>
             </div>
           </div>
@@ -1252,7 +1258,7 @@ export default function Cesium3DViewer({
           </button>
         )}
 
-        {/* Layer Controls Dropdown Toggle (Section 18) */}
+        {/* Layer Controls Dropdown Toggle */}
         <div className="relative">
           <button
             id="btn-toggle-layers"
@@ -1391,7 +1397,7 @@ export default function Cesium3DViewer({
           )}
         </div>
 
-        {/* Non-Blocking 3D Data Status Pill (Section 6) */}
+        {/* Non-Blocking 3D Data Status Pill (Section 12) */}
         <div className="px-2.5 py-1.5 rounded-lg bg-[#0b101b]/90 border border-white/15 backdrop-blur-md shadow-lg flex items-center gap-1.5 text-[10px] font-mono text-slate-300">
           <span className="text-slate-400">3D DATA:</span>
           <span className="text-cyan-300 font-bold flex items-center gap-1">
@@ -1774,7 +1780,7 @@ export default function Cesium3DViewer({
         </div>
       )}
 
-      {/* Camera Accuracy & Coordinate Telemetry Verification HUD (Section 12) */}
+      {/* Camera Accuracy & Coordinate Telemetry Verification HUD (Section 5) */}
       <div className="absolute bottom-3 left-4 z-20 pointer-events-auto flex items-center gap-3 text-[10.5px] font-mono text-slate-300 bg-[#0b101b]/95 px-3 py-1.5 rounded-lg border border-white/15 backdrop-blur-md shadow-xl flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-red-500" />
@@ -1807,7 +1813,7 @@ export default function Cesium3DViewer({
         </div>
       </div>
 
-      {/* Right Side Compact 3D Incident Inspector Overlay */}
+      {/* Right Side Compact 3D Incident Inspector Overlay (Section 18) — REMAINS VISIBLE DURING FLIGHT */}
       {selectedFire && (
         <div className="absolute top-4 right-4 bottom-12 z-20 flex pointer-events-none">
           {inspectorExpanded ? (
