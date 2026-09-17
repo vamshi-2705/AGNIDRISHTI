@@ -43,8 +43,22 @@ def normalize_database_url(url: str) -> str:
         
     return url
 
+from sqlalchemy.engine import make_url
+
+def mask_database_url(url: str) -> str:
+    """Masks credentials in a database connection URL for safe logging."""
+    if not url:
+        return "None"
+    try:
+        u = make_url(url)
+        return u.render_as_string(hide_password=True)
+    except Exception:
+        return "postgresql://***:***@***/***"
+
 DATABASE_URL = normalize_database_url(RAW_DATABASE_URL)
 IS_POSTGRES = DATABASE_URL.startswith("postgresql")
+
+logger.info(f"Database configuration loaded. Backend: {'PostgreSQL' if IS_POSTGRES else 'SQLite'}, Target: {mask_database_url(DATABASE_URL)}")
 
 # Build SQLAlchemy Engine with production connection pooling
 engine_kwargs = {
@@ -136,9 +150,12 @@ def check_db_health() -> dict:
                     "is_postgres": False
                 }
     except Exception as exc:
-        logger.error(f"Database health check failure: {exc}")
+        sanitized_err = str(exc)
+        if RAW_DATABASE_URL and RAW_DATABASE_URL in sanitized_err:
+            sanitized_err = sanitized_err.replace(RAW_DATABASE_URL, mask_database_url(RAW_DATABASE_URL))
+        logger.error(f"Database health check failure: {sanitized_err}")
         return {
             "status": "UNHEALTHY",
-            "error": str(exc),
+            "error": "Database connection failed. Check server logs.",
             "is_postgres": IS_POSTGRES
         }
