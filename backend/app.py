@@ -27,8 +27,10 @@ else:
     elif os.path.exists(_parent_env):
         load_dotenv(_parent_env)
 
-from fastapi import FastAPI, HTTPException, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from firms_service import firms_service
 from classifier import classify_fire_list, classify_thermal_point
@@ -39,6 +41,39 @@ from community_exposure import evaluate_community_exposure, get_sensitive_locati
 from event_store import get_data_store_health
 from ml_classifier import get_event_classifier, TARGET_CLASSES, FEATURE_NAMES, generate_reference_baseline_dataset
 from satellite_evidence_service import get_satellite_evidence_for_incident
+from database import check_db_health, engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manages server application lifecycle:
+    - Pre-warms ML EventClassifier
+    - Verifies production PostgreSQL + PostGIS connectivity and pooling
+    - Provides clean engine disposal upon shutdown
+    """
+    logger.info("Initializing AGNIDRISHTI backend server...")
+    try:
+        clf = get_event_classifier()
+        logger.info(f"EventClassifier pre-warmed: model_loaded={clf.is_loaded}")
+    except Exception as e:
+        logger.warning(f"EventClassifier pre-warm notice: {e}")
+
+    try:
+        db_status = check_db_health()
+        logger.info(f"Database lifecycle check: status={db_status.get('status')}, driver={db_status.get('driver')}")
+    except Exception as e:
+        logger.error(f"Database lifecycle check error: {e}")
+
+    yield
+
+    logger.info("Shutting down AGNIDRISHTI backend server...")
+    try:
+        engine.dispose()
+        logger.info("Database connection pools cleanly disposed.")
+    except Exception as e:
+        logger.warning(f"Notice during database pool disposal: {e}")
+
 
 app = FastAPI(
     title="AGNIDRISHTI - Geospatial AI Industrial Fire Surveillance Engine",
@@ -50,16 +85,61 @@ app = FastAPI(
     ),
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
+
+# Parse environment-controlled allowed CORS origins
+raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173")
+allowed_origins = [orig.strip() for orig in raw_origins.split(",") if orig.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(HTTPException)
+@app.exception_handler(StarletteHTTPException)
+async def unified_http_exception_handler(request: Request, exc: Exception):
+    """Unified handler for standard HTTP and routing exceptions."""
+    status_code = getattr(exc, "status_code", 500)
+    detail = getattr(exc, "detail", str(exc))
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": "HTTP Exception" if status_code != 404 else "Resource Not Found",
+            "detail": detail,
+            "status_code": status_code,
+            "path": request.url.path,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat()
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def unified_generic_exception_handler(request: Request, exc: Exception):
+    """
+    Unified handler for uncaught server exceptions.
+    Prevents sensitive internal stack traces from leaking to clients while ensuring detailed server logs.
+    """
+    logger.error(f"Unhandled exception during request {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": "An internal error occurred while processing the request. Technical logs recorded safely.",
+            "status_code": 500,
+            "path": request.url.path,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat()
+        }
+    )
 
 
 @app.get("/", tags=["Health & Metadata"])
@@ -77,7 +157,6 @@ def get_root_status() -> Dict[str, Any]:
             "deliverable_ii": "OpenStreetMap Industrial Facility Boundary Intersection",
             "deliverable_iii": "Directional Estimated Atmospheric Dispersion Modeling"
         },
-
         "endpoints": {
             "fires": "/api/fires?filter_mode=all|industrial|emergencies",
             "facilities": "/api/facilities",
@@ -89,16 +168,6 @@ def get_root_status() -> Dict[str, Any]:
             "classifier_info": "/api/classifier/info"
         }
     }
-
-
-@app.on_event("startup")
-def startup_prewarm():
-    """Initializes and pre-warms the ML EventClassifier on server startup."""
-    try:
-        clf = get_event_classifier()
-        logger.info(f"EventClassifier pre-warmed: model_loaded={clf.is_loaded}")
-    except Exception as e:
-        logger.warning(f"EventClassifier pre-warm notice: {e}")
 
 
 @app.get("/api/classifier/info", tags=["Classification & AI"])
