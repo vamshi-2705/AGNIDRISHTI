@@ -8,7 +8,7 @@ and GiST spatial indexes.
 """
 
 from sqlalchemy import (
-    Column, String, Float, Integer, ForeignKey, Index
+    Column, String, Float, Integer, ForeignKey, Index, Text, JSON
 )
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
@@ -126,4 +126,36 @@ class Observation(Base):
             "daynight": self.daynight,
             "source": self.source,
             "received_at": self.received_at
+        }
+
+
+class IngestionStatus(Base):
+    __tablename__ = "ingestion_status"
+
+    id = Column(Integer, primary_key=True, default=1)
+    status = Column(String(32), default="IDLE")  # IDLE, RUNNING, SUCCESS, FAILED
+    last_attempt_utc = Column(String(64), nullable=True)
+    last_success_utc = Column(String(64), nullable=True)
+    latest_observation_utc = Column(String(64), nullable=True)
+    records_fetched = Column(Integer, default=0)
+    observations_count = Column(Integer, default=0)
+    events_count = Column(Integer, default=0)
+    duration_seconds = Column(Float, default=0.0)
+    last_error = Column(Text, nullable=True)
+    sync_metadata = Column(JSON, nullable=True)
+    processed_data = Column(JSON, nullable=True)
+    updated_at = Column(Float, nullable=True)
+
+    def to_dict(self):
+        return {
+            "status": self.status,
+            "last_attempt_utc": self.last_attempt_utc,
+            "last_success_utc": self.last_success_utc,
+            "latest_observation_utc": self.latest_observation_utc,
+            "records_fetched": self.records_fetched,
+            "observations_count": self.observations_count,
+            "events_count": self.events_count,
+            "duration_seconds": self.duration_seconds,
+            "last_error": self.last_error,
+            "updated_at": self.updated_at
         }

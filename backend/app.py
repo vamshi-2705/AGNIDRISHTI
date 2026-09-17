@@ -42,6 +42,9 @@ from event_store import get_data_store_health
 from ml_classifier import get_event_classifier, TARGET_CLASSES, FEATURE_NAMES, generate_reference_baseline_dataset
 from satellite_evidence_service import get_satellite_evidence_for_incident
 from database import check_db_health, engine
+import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from ingestion_service import ingestion_engine, INGESTION_ENABLED, DEFAULT_INTERVAL_SECONDS
 
 
 @asynccontextmanager
@@ -50,7 +53,8 @@ async def lifespan(app: FastAPI):
     Manages server application lifecycle:
     - Pre-warms ML EventClassifier
     - Verifies production PostgreSQL + PostGIS connectivity and pooling
-    - Provides clean engine disposal upon shutdown
+    - Starts background NASA FIRMS Scheduled Ingestion Engine (APScheduler)
+    - Provides clean engine disposal and scheduler shutdown
     """
     logger.info("Initializing AGNIDRISHTI backend server...")
     try:
@@ -62,12 +66,48 @@ async def lifespan(app: FastAPI):
     try:
         db_status = check_db_health()
         logger.info(f"Database lifecycle check: status={db_status.get('status')}, driver={db_status.get('driver')}")
+        ingestion_engine.preload_cache()
     except Exception as e:
         logger.error(f"Database lifecycle check error: {e}")
+
+    scheduler = None
+    if INGESTION_ENABLED:
+        try:
+            scheduler = AsyncIOScheduler()
+
+            async def _scheduled_ingestion_task():
+                try:
+                    await asyncio.to_thread(ingestion_engine.run_ingestion_cycle, False)
+                except Exception as e:
+                    logger.error(f"Error in background ingestion scheduler task: {e}")
+
+            scheduler.add_job(
+                _scheduled_ingestion_task,
+                trigger="interval",
+                seconds=DEFAULT_INTERVAL_SECONDS,
+                id="firms_background_ingestion",
+                name="NASA FIRMS VIIRS Background Ingestion",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1
+            )
+            scheduler.start()
+            logger.info(f"APScheduler started successfully: interval={DEFAULT_INTERVAL_SECONDS}s, job=firms_background_ingestion")
+            # Trigger initial non-blocking cycle in background
+            asyncio.create_task(_scheduled_ingestion_task())
+        except Exception as e:
+            logger.error(f"Error starting APScheduler: {e}")
 
     yield
 
     logger.info("Shutting down AGNIDRISHTI backend server...")
+    if scheduler and scheduler.running:
+        try:
+            scheduler.shutdown(wait=False)
+            logger.info("APScheduler stopped successfully.")
+        except Exception as e:
+            logger.warning(f"Notice shutting down APScheduler: {e}")
+
     try:
         engine.dispose()
         logger.info("Database connection pools cleanly disposed.")
@@ -165,6 +205,7 @@ def get_root_status() -> Dict[str, Any]:
             "plume_model": "/api/plume/{fire_id}",
             "incident_report": "/api/incident/report/{fire_id}",
             "data_health": "/api/data-health",
+            "ingestion_health": "/api/ingestion-health",
             "classifier_info": "/api/classifier/info"
         }
     }
@@ -201,14 +242,25 @@ def get_classifier_info() -> Dict[str, Any]:
     }
 
 
+@app.get("/api/ingestion-health", tags=["Health & Metadata"])
+def get_ingestion_health_status() -> Dict[str, Any]:
+    """
+    Diagnostic endpoint providing real-time status and health telemetry of the
+    background NASA FIRMS ingestion scheduler, lock status, and processing cycle.
+    """
+    return ingestion_engine.get_ingestion_health()
+
+
 @app.get("/api/data-health", tags=["Health & Metadata"])
 def get_data_health() -> Dict[str, Any]:
     """
     Diagnostic endpoint verifying authentic live data sources and connectivity:
-    NASA FIRMS, Open-Meteo, OpenStreetMap, and SQLite observation storage.
+    NASA FIRMS, Open-Meteo, OpenStreetMap, PostgreSQL observation storage,
+    and background ingestion health.
     """
-    firms_raw = firms_service.fetch_firms_data()
-    meta = firms_raw.get("sync_metadata", {})
+    ingestion_health = ingestion_engine.get_ingestion_health()
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    meta = snapshot.get("sync_metadata", {})
     store_health = get_data_store_health()
 
     # Sample live wind check at national center (Nagpur, Maharashtra)
@@ -221,18 +273,19 @@ def get_data_health() -> Dict[str, Any]:
     return {
         "status": "healthy" if meta.get("live_connection") else "degraded",
         "firms_status": firms_status,
-        "last_successful_fetch": meta.get("last_firms_fetch_utc") or "None",
-        "latest_observation_time": meta.get("latest_observation_utc") or "None",
+        "last_successful_fetch": ingestion_health.get("last_success_utc") or meta.get("last_firms_fetch_utc") or "None",
+        "latest_observation_time": ingestion_health.get("latest_observation_utc") or meta.get("latest_observation_utc") or "None",
         "received_at": meta.get("last_sync_utc") or meta.get("last_sync_full") or "None",
-        "event_count": firms_raw.get("count", 0),
+        "event_count": snapshot.get("count", 0),
         "satellites": meta.get("active_satellites_list", []),
-        "cache_age": round(time.time() - firms_service._cache_time, 1) if firms_service._cache_time else 0.0,
+        "cache_age": round(time.time() - ingestion_engine._memory_cache_time, 1) if ingestion_engine._memory_cache_time else 0.0,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "background_ingestion": ingestion_health,
         "thermal_events": {
             "status": firms_status,
-            "source": firms_raw.get("source"),
+            "source": snapshot.get("source"),
             "live_connected": meta.get("live_connection", False),
-            "active_hotspots_count": firms_raw.get("count", 0),
+            "active_hotspots_count": snapshot.get("count", 0),
             "snpp_status": meta.get("satellite_sources", {}).get("VIIRS_SNPP_NRT", "ONLINE"),
             "noaa20_status": meta.get("satellite_sources", {}).get("VIIRS_NOAA20_NRT", "ONLINE"),
             "noaa21_status": meta.get("satellite_sources", {}).get("VIIRS_NOAA21_NRT", "ONLINE"),
@@ -240,12 +293,12 @@ def get_data_health() -> Dict[str, Any]:
             "fetch_timings": meta.get("fetch_timings", {}),
             "concurrent_fetch_time_s": meta.get("concurrent_fetch_time_s", 0.0),
             "processing_time_s": meta.get("processing_time_s", 0.05),
-            "cache_age_seconds": round(time.time() - firms_service._cache_time, 1) if firms_service._cache_time else 0.0,
+            "cache_age_seconds": round(time.time() - ingestion_engine._memory_cache_time, 1) if ingestion_engine._memory_cache_time else 0.0,
             "active_satellites_list": meta.get("active_satellites_list", []),
-            "last_firms_fetch_utc": meta.get("last_firms_fetch_utc"),
-            "last_successful_fetch": meta.get("last_firms_fetch_utc"),
-            "latest_satellite_observation_utc": meta.get("latest_observation_utc"),
-            "current_observation_time": meta.get("latest_observation_utc")
+            "last_firms_fetch_utc": ingestion_health.get("last_success_utc") or meta.get("last_firms_fetch_utc"),
+            "last_successful_fetch": ingestion_health.get("last_success_utc") or meta.get("last_firms_fetch_utc"),
+            "latest_satellite_observation_utc": ingestion_health.get("latest_observation_utc") or meta.get("latest_observation_utc"),
+            "current_observation_time": ingestion_health.get("latest_observation_utc") or meta.get("latest_observation_utc")
         },
         "meteorology_wind": {
             "status": wind_status,
@@ -285,43 +338,10 @@ def get_thermal_fires(
 ) -> Dict[str, Any]:
     """
     Retrieves authentic, deduplicated satellite detections from NASA FIRMS VIIRS feeds,
-    classifying each hotspot and enriching with downwind community exposure risk.
+    served asynchronously from PostgreSQL/PostGIS and memory cache.
+    Does NOT block or perform synchronous network calls to NASA.
     """
-    t_start = time.time()
-    ingestion = firms_service.fetch_firms_data()
-    raw_points = ingestion.get("data", [])
-    classified_points = classify_fire_list(raw_points, filter_mode=filter_mode)
-    processing_time = round(time.time() - t_start, 3)
-
-    logger.info(
-        f"[PERF] /api/fires served {len(classified_points)} observations in {processing_time}s "
-        f"(filter: {filter_mode})"
-    )
-
-    sync_meta = ingestion.get("sync_metadata", {})
-    sync_meta["processing_time_s"] = processing_time
-
-    satellite_sources = {
-        k: v.lower() for k, v in sync_meta.get("satellite_sources", {}).items()
-    } if sync_meta.get("satellite_sources") else {
-        "VIIRS_SNPP_NRT": "online",
-        "VIIRS_NOAA20_NRT": "online",
-        "VIIRS_NOAA21_NRT": "online"
-    }
-
-    return {
-        "status": ingestion.get("status", "success"),
-        "source": ingestion.get("source", "NASA_FIRMS_MULTI_VIIRS_LIVE"),
-        "count": len(classified_points),
-        "total_records": len(classified_points),
-        "filter_applied": filter_mode,
-        "sync_status": "live" if sync_meta.get("live_connection") else "unavailable",
-        "last_successful_fetch": sync_meta.get("last_firms_fetch_utc", "None"),
-        "sources": satellite_sources,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-        "sync_metadata": sync_meta,
-        "data": classified_points
-    }
+    return ingestion_engine.get_latest_fires(filter_mode=filter_mode)
 
 
 @app.get("/api/sensitive-locations", tags=["GIS Infrastructure"])
@@ -360,8 +380,8 @@ def get_analytics_summary() -> Dict[str, Any]:
     High-level dashboard KPIs and operational status metrics calculated
     strictly from the active dataset without hardcoded numbers.
     """
-    ingestion = firms_service.fetch_firms_data()
-    all_fires = classify_fire_list(ingestion.get("data", []), filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    all_fires = snapshot.get("data", [])
 
     emergencies = [f for f in all_fires if f.get("is_emergency", False)]
     flares = [f for f in all_fires if f.get("category") in ["PERSISTENT_INDUSTRIAL_FLARE", "INTERMITTENT_INDUSTRIAL_FLARE"]]
@@ -391,7 +411,7 @@ def get_analytics_summary() -> Dict[str, Any]:
             "anomaly_ratio": max_frp_point.get("anomaly_ratio") if max_frp_point else 1.0,
             "threat_level": max_frp_point.get("threat_level") if max_frp_point else "LOW"
         },
-        "sync_metadata": ingestion.get("sync_metadata", {}),
+        "sync_metadata": snapshot.get("sync_metadata", {}),
         "national_threat_posture": "RED_ALERT" if emergencies else "NOMINAL_SURVEILLANCE",
         "last_updated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
     }
@@ -400,8 +420,8 @@ def get_analytics_summary() -> Dict[str, Any]:
 @app.get("/api/plume/{fire_id}", tags=["Simulation & Hazard Modeling"])
 def get_plume_dispersion(fire_id: str) -> Dict[str, Any]:
     """Computes downwind dispersion cone polygon with live meteorological vectors."""
-    ingestion = firms_service.fetch_firms_data()
-    all_fires = classify_fire_list(ingestion.get("data", []), filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    all_fires = snapshot.get("data", [])
 
     target_fire = next((f for f in all_fires if f.get("fire_id") == fire_id or f.get("event_id") == fire_id), None)
     if not target_fire:
@@ -445,8 +465,8 @@ def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
     Primary VIIRS 375m detection corroborated by high-resolution optical (Landsat 8/9, Sentinel-2)
     and historical thermal (MODIS Terra/Aqua) context.
     """
-    ingestion = firms_service.fetch_firms_data()
-    all_fires = classify_fire_list(ingestion.get("data", []), filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    all_fires = snapshot.get("data", [])
 
     target_fire = next((f for f in all_fires if f.get("fire_id") == fire_id or f.get("event_id") == fire_id), None)
     if not target_fire:
@@ -470,8 +490,8 @@ def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
 @app.get("/api/incident/report/{fire_id}", tags=["Incident Response Dossiers"])
 def get_incident_report(fire_id: str) -> Dict[str, Any]:
     """Generates official AGNIDRISHTI Incident Report & Sensitive Receptor Audit."""
-    ingestion = firms_service.fetch_firms_data()
-    all_fires = classify_fire_list(ingestion.get("data", []), filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    all_fires = snapshot.get("data", [])
 
     incident = next((f for f in all_fires if f.get("fire_id") == fire_id or f.get("event_id") == fire_id), None)
     if not incident:
@@ -598,9 +618,8 @@ def get_incident_report(fire_id: str) -> Dict[str, Any]:
 @app.get("/api/persistent-sources", tags=["Temporal Intelligence"])
 def get_persistent_sources() -> Dict[str, Any]:
     """Retrieves all identified recurring and persistent thermal sources across India."""
-    ingestion = firms_service.fetch_firms_data()
-    raw_points = ingestion.get("data", [])
-    classified_points = classify_fire_list(raw_points, filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    classified_points = snapshot.get("data", [])
 
     sources = []
     seen_source_ids = set()
@@ -623,9 +642,8 @@ def get_persistent_sources() -> Dict[str, Any]:
 @app.get("/api/sources/{source_id}", tags=["Temporal Intelligence"])
 def get_source_detail(source_id: str) -> Dict[str, Any]:
     """Retrieves granular persistent-source intelligence, recurrence metrics, and historical passes for a source."""
-    ingestion = firms_service.fetch_firms_data()
-    raw_points = ingestion.get("data", [])
-    classified_points = classify_fire_list(raw_points, filter_mode="all")
+    snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
+    classified_points = snapshot.get("data", [])
 
     match = None
     for p in classified_points:

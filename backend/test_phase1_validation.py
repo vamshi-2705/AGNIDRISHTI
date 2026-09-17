@@ -54,7 +54,7 @@ def run_targeted_checks():
     assert events_cnt >= 1172, f"Expected >= 1172 events, got {events_cnt}"
     assert obs_cnt >= 3588, f"Expected >= 3588 observations, got {obs_cnt}"
     assert geom_sample is not None and "POINT(" in geom_sample[1], "Invalid PostGIS Point"
-    assert alembic_head[0] == "001_postgis", "Alembic not at head revision"
+    assert alembic_head[0] in ("001_postgis", "002_ingestion_status"), f"Unexpected Alembic revision: {alembic_head[0]}"
     print("  --> CHECK 2 PASSED: Database counts & PostGIS geometries verified.")
 
     # 3. Endpoint: /api/data-health
