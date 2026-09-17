@@ -27,7 +27,7 @@ def reverse_geocode_live(lat: float, lon: float) -> Dict[str, Any]:
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?lat={round(lat, 4)}&lon={round(lon, 4)}&format=json&zoom=10"
         headers = {"User-Agent": "Agnidrishti-SIH26162-Surveillance/1.0 (contact: student@sih.gov.in)"}
-        resp = requests.get(url, headers=headers, timeout=2.5)
+        resp = requests.get(url, headers=headers, timeout=(2.0, 3.0))
         if resp.status_code == 200:
             data = resp.json()
             addr = data.get("address", {})

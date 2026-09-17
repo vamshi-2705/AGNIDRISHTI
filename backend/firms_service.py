@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv, find_dotenv
 from event_store import persist_and_rebuild_events, format_utc_time
+from security import sanitize_log_message
 
 # Load local .env from current or parent directories
 _env_path = find_dotenv(usecwd=True)
@@ -84,7 +85,7 @@ class MultiSatelliteFirmsService:
         url = f"{self.BASE_URL}/{self.map_key}/{source}/68,6,97,37/{days}"
         try:
             logger.info(f"Querying authentic NASA FIRMS endpoint: {source}")
-            resp = requests.get(url, timeout=4.5)
+            resp = requests.get(url, timeout=(3.0, 5.0))
             duration = round(time.time() - t0, 2)
             if resp.status_code == 200 and "latitude" in resp.text:
                 parsed = self._parse_firms_csv(resp.text, source)
@@ -113,7 +114,8 @@ class MultiSatelliteFirmsService:
             }
         except Exception as e:
             duration = round(time.time() - t0, 2)
-            logger.warning(f"NASA FIRMS {source} error ({duration}s): {e}")
+            sanitized = sanitize_log_message(str(e))
+            logger.warning(f"NASA FIRMS {source} error ({duration}s): {sanitized}")
             return {
                 "source": source,
                 "status": "UNAVAILABLE",

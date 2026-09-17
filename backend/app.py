@@ -28,9 +28,10 @@ else:
         load_dotenv(_parent_env)
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from security import SecurityHeadersAndRateLimitMiddleware, sanitize_log_message
 
 from firms_service import firms_service
 from classifier import classify_fire_list, classify_thermal_point
@@ -115,6 +116,9 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Notice during database pool disposal: {e}")
 
 
+# Documentation toggle for production safety
+ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() in ("true", "1", "yes")
+
 app = FastAPI(
     title="AGNIDRISHTI - Geospatial AI Industrial Fire Surveillance Engine",
     description=(
@@ -124,8 +128,9 @@ app = FastAPI(
         "and dynamic directional estimated atmospheric dispersion modeling."
     ),
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
     lifespan=lifespan
 )
 
@@ -133,13 +138,21 @@ app = FastAPI(
 raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173")
 allowed_origins = [orig.strip() for orig in raw_origins.split(",") if orig.strip()]
 
+# Browsers disallow wildcard '*' when allow_credentials=True
+if "*" in allowed_origins:
+    logger.warning("Wildcard '*' in ALLOWED_ORIGINS with credentials is dangerous and rejected by browsers. Falling back to local origins.")
+    allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
 )
+
+# High-performance Security Headers and Rate Limiting
+app.add_middleware(SecurityHeadersAndRateLimitMiddleware)
 
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -167,9 +180,10 @@ async def unified_http_exception_handler(request: Request, exc: Exception):
 async def unified_generic_exception_handler(request: Request, exc: Exception):
     """
     Unified handler for uncaught server exceptions.
-    Prevents sensitive internal stack traces from leaking to clients while ensuring detailed server logs.
+    Prevents sensitive internal stack traces from leaking to clients while ensuring sanitized server logs.
     """
-    logger.error(f"Unhandled exception during request {request.method} {request.url.path}: {exc}", exc_info=True)
+    sanitized_err = sanitize_log_message(str(exc))
+    logger.error(f"Unhandled exception during request {request.method} {request.url.path}: {sanitized_err}", exc_info=True)
     return JSONResponse(
         status_code=500,
         content={
@@ -334,14 +348,20 @@ def get_data_health() -> Dict[str, Any]:
 
 @app.get("/api/fires", tags=["Thermal Surveillance"])
 def get_thermal_fires(
-    filter_mode: str = Query("all", pattern="^(all|industrial|emergencies)$", description="Filter mode")
+    filter_mode: str = Query("all", pattern="^(all|industrial|emergencies)$", description="Filter mode"),
+    limit: Optional[int] = Query(None, ge=1, le=5000, description="Maximum detections to return (1-5000)")
 ) -> Dict[str, Any]:
     """
     Retrieves authentic, deduplicated satellite detections from NASA FIRMS VIIRS feeds,
     served asynchronously from PostgreSQL/PostGIS and memory cache.
     Does NOT block or perform synchronous network calls to NASA.
     """
-    return ingestion_engine.get_latest_fires(filter_mode=filter_mode)
+    snapshot = ingestion_engine.get_latest_fires(filter_mode=filter_mode)
+    if limit is not None and "data" in snapshot:
+        snapshot = dict(snapshot)
+        snapshot["data"] = snapshot["data"][:limit]
+        snapshot["total_records"] = len(snapshot["data"])
+    return snapshot
 
 
 @app.get("/api/sensitive-locations", tags=["GIS Infrastructure"])
@@ -351,10 +371,14 @@ def get_sensitive_locations() -> Dict[str, Any]:
 
 
 @app.get("/api/osm/live-verify", tags=["GIS Infrastructure"])
-def live_osm_verification(lat: float = Query(..., description="Latitude"), lon: float = Query(..., description="Longitude")) -> Dict[str, Any]:
+def live_osm_verification(
+    lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude [-90.0 to 90.0]"),
+    lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude [-180.0 to 180.0]"),
+    radius_m: int = Query(5000, ge=100, le=50000, description="Radius in meters [100 to 50000]")
+) -> Dict[str, Any]:
     """Live Real-Time OpenStreetMap Verification."""
     nominatim_data = reverse_geocode_live(lat, lon)
-    overpass_data = query_live_osm_overpass(lat, lon, radius_m=5000)
+    overpass_data = query_live_osm_overpass(lat, lon, radius_m=radius_m)
 
     return {
         "status": "success",
@@ -362,7 +386,7 @@ def live_osm_verification(lat: float = Query(..., description="Latitude"), lon: 
         "live_nominatim_reverse_geocoding": nominatim_data,
         "live_overpass_industrial_infrastructure": overpass_data or {
             "verified_in_osm": False,
-            "message": "No industrial or refinery tags recorded in OSM within 5km radius."
+            "message": "No industrial or refinery tags recorded in OSM within search perimeter."
         },
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
     }
@@ -418,7 +442,9 @@ def get_analytics_summary() -> Dict[str, Any]:
 
 
 @app.get("/api/plume/{fire_id}", tags=["Simulation & Hazard Modeling"])
-def get_plume_dispersion(fire_id: str) -> Dict[str, Any]:
+def get_plume_dispersion(
+    fire_id: str = Path(..., pattern=r"^[A-Za-z0-9_\-]+$", max_length=100, description="Fire / Event identifier")
+) -> Dict[str, Any]:
     """Computes downwind dispersion cone polygon with live meteorological vectors."""
     snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
     all_fires = snapshot.get("data", [])
@@ -459,7 +485,9 @@ def get_plume_dispersion(fire_id: str) -> Dict[str, Any]:
 
 
 @app.get("/api/satellite-evidence/{fire_id}", tags=["Satellite Intelligence"])
-def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
+def get_satellite_evidence(
+    fire_id: str = Path(..., pattern=r"^[A-Za-z0-9_\-]+$", max_length=100, description="Fire / Event identifier")
+) -> Dict[str, Any]:
     """
     Returns authentic multi-sensor satellite evidence for the specified thermal event:
     Primary VIIRS 375m detection corroborated by high-resolution optical (Landsat 8/9, Sentinel-2)
@@ -484,11 +512,16 @@ def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
         else:
             raise HTTPException(status_code=404, detail=f"Fire incident with ID '{fire_id}' not found.")
 
-    return get_satellite_evidence_for_incident(target_fire)
+    evidence = get_satellite_evidence_for_incident(target_fire)
+    response = dict(evidence)
+    response["status"] = "success"
+    return response
 
 
 @app.get("/api/incident/report/{fire_id}", tags=["Incident Response Dossiers"])
-def get_incident_report(fire_id: str) -> Dict[str, Any]:
+def get_incident_report(
+    fire_id: str = Path(..., pattern=r"^[A-Za-z0-9_\-]+$", max_length=100, description="Fire / Event identifier")
+) -> Dict[str, Any]:
     """Generates official AGNIDRISHTI Incident Report & Sensitive Receptor Audit."""
     snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
     all_fires = snapshot.get("data", [])
@@ -640,7 +673,9 @@ def get_persistent_sources() -> Dict[str, Any]:
 
 
 @app.get("/api/sources/{source_id}", tags=["Temporal Intelligence"])
-def get_source_detail(source_id: str) -> Dict[str, Any]:
+def get_source_detail(
+    source_id: str = Path(..., pattern=r"^[A-Za-z0-9_\-]+$", max_length=100, description="Persistent source identifier")
+) -> Dict[str, Any]:
     """Retrieves granular persistent-source intelligence, recurrence metrics, and historical passes for a source."""
     snapshot = ingestion_engine.get_latest_fires(filter_mode="all")
     classified_points = snapshot.get("data", [])
@@ -665,46 +700,4 @@ def get_source_detail(source_id: str) -> Dict[str, Any]:
         "history": match.get("history", []),
         "fire": match
     }
-
-
-@app.get("/api/satellite-evidence/{fire_id}", tags=["Satellite Intelligence"])
-def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
-    """
-    Retrieves supporting satellite observations (Landsat 8/9, Sentinel-2, MODIS)
-    for a given VIIRS primary detection event.
-    """
-    # Look up fire in active surveillance dataset
-    ingestion = firms_service.fetch_firms_data()
-    raw_points = ingestion.get("data", [])
-    classified_points = classify_fire_list(raw_points, filter_mode="all")
-
-    matched_fire = None
-    for p in classified_points:
-        if p.get("fire_id") == fire_id or p.get("event_id") == fire_id:
-            matched_fire = p
-            break
-
-    # If not found in live feed, handle demo event or fallback fire object
-    if not matched_fire:
-        if fire_id.startswith("AGNI-DEMO-"):
-            matched_fire = {
-                "fire_id": fire_id,
-                "event_id": fire_id,
-                "latitude": 21.1702,
-                "longitude": 72.8311,
-                "frp": 142.5,
-                "satellite": "VIIRS_NOAA21",
-                "confidence": "HIGH",
-                "is_emergency": True
-            }
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Thermal detection '{fire_id}' not found in active surveillance dataset."
-            )
-
-    evidence = get_satellite_evidence_for_incident(matched_fire)
-    response = dict(evidence)
-    response["status"] = "success"
-    return response
 

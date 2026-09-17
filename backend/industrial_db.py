@@ -271,6 +271,7 @@ def query_live_osm_overpass(lat: float, lon: float, radius_m: int = 5000) -> Opt
     within radius_m of the thermal detection point.
     Uses multi-mirror fallback and coordinate caching for high availability.
     """
+    radius_m = max(100, min(int(radius_m), 50000))
     cache_key = f"{round(lat, 2)},{round(lon, 2)}"
     if cache_key in _OVERPASS_CACHE:
         return _OVERPASS_CACHE[cache_key]
@@ -293,7 +294,7 @@ def query_live_osm_overpass(lat: float, lon: float, radius_m: int = 5000) -> Opt
         return res
 
     # Live Overpass query to mirror endpoints
-    query = f"""[out:json][timeout:3];
+    query = f"""[out:json][timeout:4];
 (
   node["industrial"](around:{radius_m},{lat},{lon});
   way["landuse"="industrial"](around:{radius_m},{lat},{lon});
@@ -312,7 +313,7 @@ out tags 2;"""
             resp = requests.post(
                 mirror,
                 data={"data": query},
-                timeout=3.0,
+                timeout=(2.5, 4.0),
                 headers={"User-Agent": "Agnidrishti-SIH26162-OSM/1.0"}
             )
             if resp.status_code == 200:

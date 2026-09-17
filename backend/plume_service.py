@@ -59,7 +59,7 @@ def fetch_live_wind(lat: float, lon: float, allow_network: bool = True) -> Dict[
                 f"latitude={round(lat, 4)}&longitude={round(lon, 4)}"
                 f"&current=wind_speed_10m,wind_direction_10m"
             )
-            resp = requests.get(url, timeout=2.5)
+            resp = requests.get(url, timeout=(2.0, 3.0))
             if resp.status_code == 200:
                 curr = resp.json().get("current", {})
                 speed_kmh = float(curr.get("wind_speed_10m", 0.0))
