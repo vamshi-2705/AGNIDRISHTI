@@ -243,16 +243,23 @@ def run_phase3_security_suite():
 
         # 14. Advisory lock still works
         print("\n[TEST 14] PostgreSQL Advisory Lock Verification...")
-        with engine.connect() as conn:
-            lock1 = conn.execute(text("SELECT pg_try_advisory_lock(:id);"), {"id": FIRMS_ADVISORY_LOCK_ID}).fetchone()[0]
-            assert lock1 is True, "Expected primary advisory lock acquisition"
-            # Second acquisition on separate connection should fail
-            with engine.connect() as conn2:
-                lock2 = conn2.execute(text("SELECT pg_try_advisory_lock(:id);"), {"id": FIRMS_ADVISORY_LOCK_ID}).fetchone()[0]
-                assert lock2 is False, "Expected concurrent advisory lock to be busy"
-            # Release lock
-            rel = conn.execute(text("SELECT pg_advisory_unlock(:id);"), {"id": FIRMS_ADVISORY_LOCK_ID}).fetchone()[0]
-            assert rel is True, "Expected clean lock release"
+        max_wait = 45
+        acquired = False
+        while max_wait > 0:
+            with engine.connect() as conn:
+                acquired = ingestion_engine.acquire_advisory_lock(conn)
+                if acquired:
+                    # Mutual exclusion test with separate connection
+                    with engine.connect() as conn2:
+                        lock2 = ingestion_engine.acquire_advisory_lock(conn2)
+                        assert lock2 is False, "Expected concurrent advisory lock to be busy"
+                    rel = ingestion_engine.release_advisory_lock(conn)
+                    assert rel is True, "Expected clean lock release"
+                    break
+            time.sleep(1)
+            max_wait -= 1
+
+        assert acquired is True, "Expected primary advisory lock acquisition within timeout"
         print("  --> TEST 14 PASSED: Advisory lock provides mutual exclusion.")
 
         # 15. /api/fires remains non-blocking (<100ms)

@@ -196,6 +196,16 @@ async def unified_generic_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/health", tags=["Health & Metadata"])
+def get_liveness_health() -> Dict[str, Any]:
+    """Lightweight health check for Docker, orchestrators, and load balancers."""
+    return {
+        "status": "healthy",
+        "service": "agnidrishti-backend",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @app.get("/", tags=["Health & Metadata"])
 def get_root_status() -> Dict[str, Any]:
     """Root health check and comprehensive API manifest."""
