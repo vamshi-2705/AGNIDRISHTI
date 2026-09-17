@@ -60,6 +60,8 @@ frontend/dist/
 # Presentation & Evaluation Assets (Local Only)
 *.pptx
 *.pdf
+*.mp4
+vid/
 agnidrishti_system_architecture.jpg
 generate_*_pdf.py
 

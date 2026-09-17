@@ -11,7 +11,8 @@ export default function ThermalTimeline({
   isPlaying = false,
   setIsPlaying,
   totalEvents = 0,
-  filteredCount = 0
+  filteredCount = 0,
+  is3DActive = false
 }) {
   const ranges = [
     { id: '1h', num: 1, label: 'Last 1h' },
@@ -68,34 +69,38 @@ export default function ThermalTimeline({
   };
 
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] w-[90%] max-w-xl px-3.5 py-2 rounded-xl shadow-2xl glass-panel text-slate-100 font-sans select-none flex flex-col gap-1.5 border border-white/[0.1] bg-[#090d14]/92 backdrop-blur-md">
+    <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] ${
+      is3DActive
+        ? 'w-auto min-w-[340px] max-w-md px-3 py-1.5 rounded-lg h-[58px] gap-1'
+        : 'w-[90%] max-w-xl px-3.5 py-2 rounded-xl gap-1.5'
+    } shadow-2xl glass-panel text-slate-100 font-sans select-none flex flex-col border border-white/[0.1] bg-[#090d14]/95 backdrop-blur-md transition-all`}>
       {/* Top line: Header & Range Buttons */}
       <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-orange-400" />
-          <span className="font-bold text-[11px] tracking-wider uppercase text-slate-200 font-mono">
-            THERMAL ACTIVITY TIMELINE
+          <span className="font-bold text-[10.5px] tracking-wider uppercase text-slate-200 font-mono">
+            {is3DActive ? 'INSPECTION TIMELINE' : 'THERMAL ACTIVITY TIMELINE'}
           </span>
-          <span className="text-[10px] text-slate-400 font-mono">
-            ({filteredCount} / {totalEvents} active)
+          <span className="text-[9.5px] text-slate-400 font-mono">
+            ({filteredCount}/{totalEvents})
           </span>
         </div>
 
         {/* Time range selector buttons */}
-        <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded-lg border border-white/[0.08]">
+        <div className="flex items-center gap-1 bg-white/[0.04] p-0.5 rounded border border-white/[0.08]">
           {ranges.map((r) => {
             const isActive = (timeRange === r.id) || (timeRange === r.num) || (numericRange === r.num);
             return (
               <button
                 key={r.id}
                 onClick={() => handleRangeSelect(r)}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium transition-all cursor-pointer ${
+                className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono font-medium transition-all cursor-pointer ${
                   isActive
                     ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30 font-bold shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {r.label}
+                {r.id.toUpperCase()}
               </button>
             );
           })}

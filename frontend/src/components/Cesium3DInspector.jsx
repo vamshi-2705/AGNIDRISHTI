@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Crosshair, Wind, FileText, MapPin, Building2, ShieldAlert, 
-  Copy, Check, Radio, ArrowLeft
+  Copy, Check, Radio, ArrowLeft, Clock
 } from 'lucide-react';
 import { getDataHealth } from '../services/api';
 
@@ -280,6 +280,91 @@ export default function Cesium3DInspector({
           )}
         </div>
 
+        {/* 4.5. Source Behavior & Temporal Intelligence (Priority 2) */}
+        {(() => {
+          const ps = fire.persistent_source || {};
+          const sourceTier = ps.source_tier || fire.source_tier || ((fire.temporal_profile?.persistence_score >= 60 && (fire.history?.length || 0) >= 3) ? 'PERSISTENT SOURCE' : (fire.history && fire.history.length > 1 ? 'RECURRENT SOURCE' : 'INSUFFICIENT HISTORY'));
+          const firstObserved = ps.first_seen || fire.first_detected || (fire.acq_date ? `${fire.acq_date} ${fire.acq_time || ''}` : '—');
+          const lastObserved = ps.last_seen || fire.latest_detection || (fire.acq_date ? `${fire.acq_date} ${fire.acq_time || ''}` : '—');
+          const observationsCount = ps.observation_count ?? (fire.observation_count || (fire.history ? fire.history.length : 1));
+          const observationDays = ps.distinct_observation_days ?? (fire.history ? new Set(fire.history.map(h => h.acq_date).filter(Boolean)).size || 1 : 1);
+          const recurrenceRate = ps.recurrence_frequency || (ps.recurrence_per_week ? `${ps.recurrence_per_week}/week` : (observationsCount > 1 ? `${observationsCount}/week` : 'INSUFFICIENT HISTORY'));
+          const frpTrend = ps.frp_trend || fire.trend || (observationsCount > 1 ? 'STABLE' : 'INSUFFICIENT HISTORY');
+          const persistenceScore = ps.persistence_score ?? (fire.persistence_score || fire.temporal_profile?.persistence_score || 0);
+          const diurnalWindow = ps.diurnal_behavior || '—';
+
+          return (
+            <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10 space-y-1.5">
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-1">
+                <span className="flex items-center gap-1.5 text-slate-400 uppercase text-[9.5px] font-semibold tracking-wider font-sans">
+                  <Clock className="w-3.5 h-3.5 text-orange-400" />
+                  <span>SOURCE BEHAVIOR</span>
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider ${
+                  sourceTier === 'PERSISTENT SOURCE'
+                    ? 'bg-amber-950/80 text-amber-300 border border-amber-600/60'
+                    : sourceTier === 'RECURRENT SOURCE'
+                    ? 'bg-sky-950/80 text-sky-300 border border-sky-600/60'
+                    : sourceTier === 'NEW SOURCE'
+                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/60'
+                    : 'bg-slate-800/80 text-slate-400 border border-slate-700/50'
+                }`}>
+                  {sourceTier}
+                </span>
+              </div>
+
+              {sourceTier === 'INSUFFICIENT HISTORY' && observationsCount <= 1 ? (
+                <div className="text-[9.5px] text-slate-400 font-mono py-1 px-1.5 rounded bg-white/[0.02]">
+                  Single satellite pass. Insufficient multi-pass history to establish recurrence.
+                </div>
+              ) : (
+                <div className="space-y-1 text-[10px] font-mono pt-0.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">First observed:</span>
+                    <span className="text-slate-200">{firstObserved}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Last observed:</span>
+                    <span className="text-slate-200">{lastObserved}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Observations:</span>
+                    <span className="text-slate-200 font-semibold">{observationsCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Observation days:</span>
+                    <span className="text-slate-200">{observationDays}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Recurrence:</span>
+                    <span className="text-sky-300 font-semibold">{recurrenceRate}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">FRP trend:</span>
+                    <span className={`font-semibold ${
+                      frpTrend === 'INCREASING' || frpTrend === '↑ RAPIDLY INCREASING' ? 'text-red-400' :
+                      frpTrend === 'DECREASING' || frpTrend === '↓ DECREASING' ? 'text-emerald-400' :
+                      'text-amber-300'
+                    }`}>
+                      {frpTrend}
+                    </span>
+                  </div>
+                  {diurnalWindow && diurnalWindow !== '—' && diurnalWindow !== 'INSUFFICIENT DATA' && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Diurnal pattern:</span>
+                      <span className="text-slate-300 truncate max-w-[170px]">{diurnalWindow}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1 border-t border-white/[0.04]">
+                    <span className="text-slate-400">Persistence score:</span>
+                    <span className="text-orange-400 font-bold">{persistenceScore}/100</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* 5. Surface Wind & Estimated Dispersion (Section 11 & 12) */}
         <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 space-y-2">
           <div className="flex items-center gap-1.5 text-slate-400 uppercase text-[10px] font-semibold tracking-wider font-sans border-b border-white/[0.06] pb-1.5">
@@ -361,9 +446,21 @@ export default function Cesium3DInspector({
             Data Provenance & Health
           </div>
           <div className="flex justify-between items-center py-0.5">
-            <span className="text-slate-400">NASA FIRMS (VIIRS)</span>
+            <span className="text-slate-400">VIIRS (Primary Detection - 375m)</span>
             <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-700 text-[9px] font-bold">
-              {dataHealth?.thermal_events?.live_connected ? 'LIVE' : 'SYNCHRONIZED'}
+              {dataHealth?.thermal_events?.live_connected ? 'LIVE (PRIMARY)' : 'SYNCHRONIZED'}
+            </span>
+          </div>
+          <div className="flex justify-between items-center py-0.5">
+            <span className="text-slate-400">Landsat / S2 (Supporting Optical)</span>
+            <span className="px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 text-[9px] font-bold">
+              CONTEXT
+            </span>
+          </div>
+          <div className="flex justify-between items-center py-0.5">
+            <span className="text-slate-400">MODIS (Supporting Thermal)</span>
+            <span className="px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-700 text-[9px] font-bold">
+              HISTORICAL
             </span>
           </div>
           <div className="flex justify-between items-center py-0.5">

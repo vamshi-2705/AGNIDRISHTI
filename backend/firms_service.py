@@ -243,33 +243,53 @@ class MultiSatelliteFirmsService:
 
         for idx, row in enumerate(reader):
             try:
-                lat = float(row.get("latitude", 0.0))
-                lon = float(row.get("longitude", 0.0))
+                lat_str = row.get("latitude")
+                lon_str = row.get("longitude")
+                if not lat_str or not lon_str:
+                    continue
+                lat = float(lat_str)
+                lon = float(lon_str)
                 if lat == 0.0 and lon == 0.0:
                     continue
 
                 raw_sat = row.get("satellite", "")
                 norm_sat = SATELLITE_NAME_MAP.get(raw_sat, sat_key)
-                acq_time_raw = str(row.get("acq_time", "1200")).strip()
+                acq_time_raw = str(row.get("acq_time", "")).strip()
                 if len(acq_time_raw) == 3:
                     acq_time_raw = "0" + acq_time_raw
+
+                # Brightness: preserve raw float or None if missing, do not fabricate default
+                raw_bright = row.get("bright_ti4") or row.get("brightness")
+                brightness = float(raw_bright) if raw_bright not in (None, "", "null") else None
+
+                # FRP: preserve raw float or None if missing, do not fabricate default
+                raw_frp = row.get("frp")
+                frp = float(raw_frp) if raw_frp not in (None, "", "null") else None
+
+                # Brightness T31: preserve raw float or None if missing
+                raw_t31 = row.get("bright_ti5") or row.get("bright_t31")
+                bright_t31 = float(raw_t31) if raw_t31 not in (None, "", "null") else None
+
+                # Confidence: preserve raw string or None if missing, do not fabricate 'nominal'
+                raw_conf = row.get("confidence")
+                confidence = str(raw_conf).strip() if raw_conf not in (None, "", "null") else None
 
                 record = {
                     "fire_id": f"FIRMS-RAW-{idx+1:04d}",
                     "latitude": lat,
                     "longitude": lon,
-                    "brightness": float(row.get("bright_ti4", row.get("brightness", 320.0))),
-                    "scan": float(row.get("scan", 0.4)),
-                    "track": float(row.get("track", 0.4)),
-                    "acq_date": row.get("acq_date", "2026-09-14"),
-                    "acq_time": acq_time_raw,
+                    "brightness": brightness,
+                    "scan": float(row["scan"]) if row.get("scan") not in (None, "") else None,
+                    "track": float(row["track"]) if row.get("track") not in (None, "") else None,
+                    "acq_date": row.get("acq_date"),
+                    "acq_time": acq_time_raw or None,
                     "satellite": norm_sat,
-                    "instrument": row.get("instrument", "VIIRS (375m)"),
-                    "confidence": row.get("confidence", "nominal"),
-                    "version": row.get("version", "2.0NRT"),
-                    "bright_t31": float(row.get("bright_ti5", row.get("bright_t31", 295.0))),
-                    "frp": float(row.get("frp", 10.0)),
-                    "daynight": row.get("daynight", "D"),
+                    "instrument": row.get("instrument") or "VIIRS (375m)",
+                    "confidence": confidence,
+                    "version": row.get("version") or "2.0NRT",
+                    "bright_t31": bright_t31,
+                    "frp": frp,
+                    "daynight": row.get("daynight") or "D",
                     "source": "NASA FIRMS NRT"
                 }
                 parsed_records.append(record)

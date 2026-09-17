@@ -91,115 +91,183 @@ export function calculateGeodesicDestination(lat, lon, bearingDeg, distKm) {
 }
 
 /**
- * Creates a directional atmospheric dispersion plume / wedge polygon.
- * Originates EXACTLY from the thermal hotspot and extends DOWNWIND.
+ * Creates a professional GIS-style downwind dispersion corridor / wedge.
  * 
- * @param {number} latitude - Hotspot latitude
- * @param {number} longitude - Hotspot longitude
- * @param {number} downwindBearing - Direction TOWARD which the plume travels (degrees 0-360)
- * @param {number} lengthKm - Estimated transport distance / plume reach (km)
- * @param {number} apertureDegrees - Plume cone aperture / dispersion angle (degrees, default 32.0)
- * @returns {{
- *   leafletPositions: [number, number][],
- *   centerline: [number, number][],
- *   arrow: [number, number][],
- *   downwindBearing: number,
- *   lengthKm: number
- * }}
+ * Geometry Requirements:
+ * - Point 0: Originates EXACTLY at the thermal incident coordinate.
+ * - Direction: Follows the existing calculated downwind bearing.
+ * - Width profile: Starts narrow at incident, expands progressively through near and middle field,
+ *   reaching maximum width at the far downwind boundary, with an aerodynamic rounded downwind cap.
+ * - Gradient approximation: Core plume (high-concentration near field), Medium plume, Outer envelope.
+ * 
+ * @param {number} latitude - Incident latitude
+ * @param {number} longitude - Incident longitude
+ * @param {number} downwindBearing - Direction TOWARD which dispersion travels (0-360°)
+ * @param {number} hazardRadiusKm - Estimated hazard / dispersion extent (km)
+ * @param {number} [dispersionWidthKm] - Optional width at hazard boundary
+ * @param {Object} [windInfo] - Optional existing wind telemetry { speedKmh, speedMs, directionDeg }
+ * @param {boolean} [isDirectional=true] - Whether wind is directional vs calm/missing
+ * @returns {Object} Calculated GIS geometry layers, positions, and bounds
  */
-export function createDirectionalPlume(
+export function createDownwindDispersionPolygon(
   latitude,
   longitude,
   downwindBearing,
-  lengthKm
+  hazardRadiusKm,
+  dispersionWidthKm,
+  windInfo = {},
+  isDirectional = true
 ) {
   const originLat = Number(latitude);
   const originLon = Number(longitude);
   const normBearing = ((Number(downwindBearing) % 360) + 360) % 360;
-  const dist = Math.max(1.5, Math.min(35.0, Number(lengthKm) || 5.0));
+  const dist = Math.max(0.8, Math.min(35.0, Number(hazardRadiusKm) || 3.0));
+
+  // If wind is calm or missing, create an omnidirectional local screening buffer
+  if (!isDirectional) {
+    const radialCoords = [];
+    const numPoints = 32;
+    const r = Math.min(dist, 0.8);
+    for (let i = 0; i < numPoints; i++) {
+      const b = (i * 360) / numPoints;
+      radialCoords.push(calculateGeodesicDestination(originLat, originLon, b, r));
+    }
+    radialCoords.push(radialCoords[0]);
+
+    return {
+      originLat,
+      originLon,
+      outerPolygon: radialCoords,
+      mediumPolygon: null,
+      corePolygon: null,
+      centerline: null,
+      leafletPositions: radialCoords,
+      corePositions: null,
+      downwindBearing: null,
+      lengthKm: r,
+      isDirectional: false,
+      windIndicatorPosition: null,
+      labelPosition: calculateGeodesicDestination(originLat, originLon, 0, r * 1.15),
+      bounds: [
+        [originLat - (r / 111.32), originLon - (r / (111.32 * Math.cos(originLat * Math.PI / 180)))],
+        [originLat + (r / 111.32), originLon + (r / (111.32 * Math.cos(originLat * Math.PI / 180)))]
+      ]
+    };
+  }
 
   const leftCrossBearing = (normBearing - 90.0 + 360.0) % 360.0;
   const rightCrossBearing = (normBearing + 90.0) % 360.0;
 
-  // 1. Outer Atmospheric Transport Envelope:
-  // Originates EXACTLY at the hotspot source (W = 0).
-  // Widens gradually with distance following Gaussian dispersion W(d) = 0.04 + 0.32 * sqrt(d)
-  const outerPolygon = [[originLat, originLon]];
-  const numSteps = 12;
-  const distances = [];
-  for (let i = 1; i <= numSteps; i++) {
-    distances.push(dist * (i / numSteps));
+  // Maximum half-width at the far downwind boundary
+  // Standard atmospheric hazard corridor half-aperture ~16° => halfWidthMax ~ dist * tan(16°) ~ 0.287 * dist
+  const halfWidthMax = dispersionWidthKm && dispersionWidthKm > 0
+    ? dispersionWidthKm / 2.0
+    : Math.max(0.35, Math.min(8.0, dist * 0.287));
+
+  // Helper generator for expanding wedge with curved downwind cap
+  function buildWedge(reachDist, halfW) {
+    const pts = [[originLat, originLon]]; // Point 0: incident origin
+    const steps = 12;
+
+    // 1. Left flank from incident to far downwind edge (narrow -> moderate -> widest)
+    for (let i = 1; i <= steps; i++) {
+      const f = i / steps;
+      const d = reachDist * f;
+      // Parabolic / square-root diffusion profile: starts narrow, expands progressively
+      const w = halfW * (0.22 * f + 0.78 * Math.sqrt(f));
+      const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
+      pts.push(calculateGeodesicDestination(center[0], center[1], leftCrossBearing, w));
+    }
+
+    // 2. Downwind Cap (aerodynamic rounded front spanning from left flank to right flank)
+    const capAngleSpread = Math.min(22.0, Math.atan2(halfW, reachDist) * (180 / Math.PI));
+    const capSteps = 7;
+    for (let j = 1; j < capSteps; j++) {
+      const alpha = -capAngleSpread + (2 * capAngleSpread * (j / capSteps));
+      const capBearing = (normBearing + alpha + 360) % 360;
+      // Slightly convex forward cap
+      const convexFactor = 1.0 + 0.025 * Math.cos((alpha / capAngleSpread) * (Math.PI / 2));
+      pts.push(calculateGeodesicDestination(originLat, originLon, capBearing, reachDist * convexFactor));
+    }
+
+    // 3. Right flank from far downwind edge back to incident
+    for (let i = steps; i >= 1; i--) {
+      const f = i / steps;
+      const d = reachDist * f;
+      const w = halfW * (0.22 * f + 0.78 * Math.sqrt(f));
+      const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
+      pts.push(calculateGeodesicDestination(center[0], center[1], rightCrossBearing, w));
+    }
+
+    // Close loop back to incident
+    pts.push([originLat, originLon]);
+    return pts;
   }
 
-  // Left flank from source to leading edge
-  for (const d of distances) {
-    const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
-    const halfWidth = 0.04 + 0.32 * Math.sqrt(d);
-    outerPolygon.push(calculateGeodesicDestination(center[0], center[1], leftCrossBearing, halfWidth));
-  }
+  // 1. Outer Area Corridor (full hazard extent)
+  const outerPolygon = buildWedge(dist, halfWidthMax);
 
-  // Smooth rounded aerodynamic nose around the plume tip
-  const tip = calculateGeodesicDestination(originLat, originLon, normBearing, dist * 1.02);
-  outerPolygon.push(tip);
+  // 2. Medium Plume (secondary exposure, moderate width & extent ~65%)
+  const mediumDist = dist * 0.65;
+  const mediumHalfW = halfWidthMax * 0.65;
+  const mediumPolygon = buildWedge(mediumDist, mediumHalfW);
 
-  // Right flank from leading edge back to source
-  for (let i = distances.length - 1; i >= 0; i--) {
-    const d = distances[i];
-    const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
-    const halfWidth = 0.04 + 0.32 * Math.sqrt(d);
-    outerPolygon.push(calculateGeodesicDestination(center[0], center[1], rightCrossBearing, halfWidth));
-  }
-  // Close loop back to hotspot source
-  outerPolygon.push([originLat, originLon]);
+  // 3. Core Plume (primary high-concentration near-source core ~35%)
+  const coreDist = dist * 0.35;
+  const coreHalfW = halfWidthMax * 0.38;
+  const corePolygon = buildWedge(coreDist, coreHalfW);
 
-  // 2. Inner Core Transport Corridor (denser near source, higher concentration)
-  const corePolygon = [[originLat, originLon]];
-  const coreDist = dist * 0.65;
-  const coreSteps = 8;
-  const coreDistances = [];
-  for (let i = 1; i <= coreSteps; i++) {
-    coreDistances.push(coreDist * (i / coreSteps));
-  }
-  for (const d of coreDistances) {
-    const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
-    const halfWidth = 0.02 + 0.16 * Math.sqrt(d);
-    corePolygon.push(calculateGeodesicDestination(center[0], center[1], leftCrossBearing, halfWidth));
-  }
-  const coreTip = calculateGeodesicDestination(originLat, originLon, normBearing, coreDist * 1.02);
-  corePolygon.push(coreTip);
-  for (let i = coreDistances.length - 1; i >= 0; i--) {
-    const d = coreDistances[i];
-    const center = calculateGeodesicDestination(originLat, originLon, normBearing, d);
-    const halfWidth = 0.02 + 0.16 * Math.sqrt(d);
-    corePolygon.push(calculateGeodesicDestination(center[0], center[1], rightCrossBearing, halfWidth));
-  }
-  corePolygon.push([originLat, originLon]);
-
-  // 3. Directional centerline from hotspot to downwind front
+  // 4. Centerline: subtle brighter downwind line
   const centerline = [
     [originLat, originLon],
-    calculateGeodesicDestination(originLat, originLon, normBearing, dist * 0.45),
-    calculateGeodesicDestination(originLat, originLon, normBearing, dist * 0.82)
+    calculateGeodesicDestination(originLat, originLon, normBearing, dist * 0.28),
+    calculateGeodesicDestination(originLat, originLon, normBearing, dist * 0.58),
+    calculateGeodesicDestination(originLat, originLon, normBearing, dist * 0.85)
   ];
 
-  // 4. Subtle downwind directional vector arrowhead (event ● ───────────────→ downwind)
-  const arrowHeadDist = dist * 0.82;
-  const arrowWingDist = dist * 0.70;
-  const arrowTip = calculateGeodesicDestination(originLat, originLon, normBearing, arrowHeadDist);
-  const arrowLeft = calculateGeodesicDestination(originLat, originLon, (normBearing - 12.0 + 360.0) % 360.0, arrowWingDist);
-  const arrowRight = calculateGeodesicDestination(originLat, originLon, (normBearing + 12.0) % 360.0, arrowWingDist);
+  // 5. Downwind Arrow Indicator near incident
+  const arrowDist = Math.min(0.25, dist * 0.12);
+  const windIndicatorPosition = calculateGeodesicDestination(originLat, originLon, normBearing, arrowDist);
+
+  // 6. Label Position (along mid-field flank of the plume)
+  const labelDist = dist * 0.52;
+  const labelCenter = calculateGeodesicDestination(originLat, originLon, normBearing, labelDist);
+  const labelHalfW = halfWidthMax * (0.22 * 0.52 + 0.78 * Math.sqrt(0.52));
+  const labelPosition = calculateGeodesicDestination(labelCenter[0], labelCenter[1], leftCrossBearing, labelHalfW * 0.85);
+
+  // 7. Bounding Box for smooth map camera fitting
+  let minLat = originLat, maxLat = originLat, minLon = originLon, maxLon = originLon;
+  outerPolygon.forEach(([pLat, pLon]) => {
+    if (pLat < minLat) minLat = pLat;
+    if (pLat > maxLat) maxLat = pLat;
+    if (pLon < minLon) minLon = pLon;
+    if (pLon > maxLon) maxLon = pLon;
+  });
 
   return {
     originLat,
     originLon,
+    outerPolygon,
+    mediumPolygon,
+    corePolygon,
+    centerline,
     leafletPositions: outerPolygon,
     corePositions: corePolygon,
-    centerline: centerline,
-    arrow: [arrowLeft, arrowTip, arrowRight],
-    arrowTip: arrowTip,
     downwindBearing: normBearing,
-    lengthKm: dist
+    lengthKm: dist,
+    halfWidthMaxKm: halfWidthMax,
+    isDirectional: true,
+    windIndicatorPosition,
+    labelPosition,
+    bounds: [[minLat, minLon], [maxLat, maxLon]]
   };
+}
+
+/**
+ * Backward compatibility wrapper for createDirectionalPlume
+ */
+export function createDirectionalPlume(latitude, longitude, downwindBearing, lengthKm) {
+  return createDownwindDispersionPolygon(latitude, longitude, downwindBearing, lengthKm);
 }
 
 function MapCameraController({ selectedFire }) {
@@ -215,6 +283,34 @@ function MapCameraController({ selectedFire }) {
       });
     }
   }, [selectedFire, map]);
+
+  return null;
+}
+
+/**
+ * Automatically fits map bounds when downwind dispersion is estimated,
+ * ensuring the full corridor and incident are visible without excessive zoom-out.
+ */
+function PlumeBoundsFitter({ directionalPlume }) {
+  const map = useMap();
+  const prevPlumeKeyRef = useRef(null);
+
+  useEffect(() => {
+    if (directionalPlume?.bounds) {
+      const key = `${directionalPlume.originLat}-${directionalPlume.originLon}-${directionalPlume.lengthKm}-${directionalPlume.downwindBearing}`;
+      if (key !== prevPlumeKeyRef.current) {
+        prevPlumeKeyRef.current = key;
+        map.fitBounds(directionalPlume.bounds, {
+          padding: [50, 50],
+          maxZoom: 13,
+          animate: true,
+          duration: 0.8
+        });
+      }
+    } else {
+      prevPlumeKeyRef.current = null;
+    }
+  }, [directionalPlume, map]);
 
   return null;
 }
@@ -445,10 +541,20 @@ export default function GisMapViewer({
   sensitiveLocations = null,
   selectedFire = null,
   onSelectFire = () => {},
-  activePlume = null
+  activePlume = null,
+  baseMap: propBaseMap,
+  onSelectBaseMap,
+  hideFloatingSelector = false,
+  showThermalEvents: propShowThermalEvents,
+  showFacilities: propShowFacilities,
+  showPlume: propShowPlume,
+  showExposure: propShowExposure,
+  showOsmContext: propShowOsmContext,
+  showOpticalContext: propShowOpticalContext,
+  showModisContext: propShowModisContext
 }) {
   // Base Map Selection with localStorage persistence
-  const [baseMap, setBaseMap] = useState(() => {
+  const [internalBaseMap, setInternalBaseMap] = useState(() => {
     try {
       const saved = localStorage.getItem(BASE_MAP_STORAGE_KEY);
       if (saved && BASE_MAP_PROVIDERS[saved]) {
@@ -460,18 +566,27 @@ export default function GisMapViewer({
     return 'dark';
   });
 
+  const baseMap = (propBaseMap && BASE_MAP_PROVIDERS[propBaseMap]) ? propBaseMap : internalBaseMap;
+
   const [isTileLoading, setIsTileLoading] = useState(false);
 
-  // Layer visibility toggles
+  // Layer visibility toggles (fallback to internal state if not controlled)
   const [layersOpen, setLayersOpen] = useState(false);
-  const [showThermalEvents, setShowThermalEvents] = useState(true);
-  const [showFacilities, setShowFacilities] = useState(true);
-  const [showPlume, setShowPlume] = useState(true);
-  const [showExposure, setShowExposure] = useState(true);
-  const [showOsmContext, setShowOsmContext] = useState(true);
-  const [showSettlements, setShowSettlements] = useState(true);
-  const [showSchools, setShowSchools] = useState(true);
-  const [showHospitals, setShowHospitals] = useState(true);
+  const [internalThermal, setInternalThermal] = useState(true);
+  const [internalFacilities, setInternalFacilities] = useState(true);
+  const [internalPlume, setInternalPlume] = useState(true);
+  const [internalExposure, setInternalExposure] = useState(true);
+  const [internalOsm, setInternalOsm] = useState(true);
+  const [internalOptical, setInternalOptical] = useState(false);
+  const [internalModis, setInternalModis] = useState(false);
+
+  const showThermalEvents = propShowThermalEvents !== undefined ? propShowThermalEvents : internalThermal;
+  const showFacilities = propShowFacilities !== undefined ? propShowFacilities : internalFacilities;
+  const showPlume = propShowPlume !== undefined ? propShowPlume : internalPlume;
+  const showExposure = propShowExposure !== undefined ? propShowExposure : internalExposure;
+  const showOsmContext = propShowOsmContext !== undefined ? propShowOsmContext : internalOsm;
+  const showOpticalContext = propShowOpticalContext !== undefined ? propShowOpticalContext : internalOptical;
+  const showModisContext = propShowModisContext !== undefined ? propShowModisContext : internalModis;
 
   // Smooth dismiss when clicking outside layer switcher
   const layerControlRef = useRef(null);
@@ -492,8 +607,12 @@ export default function GisMapViewer({
   }, [layersOpen]);
 
   const handleSelectBaseMap = (key) => {
+    if (onSelectBaseMap) {
+      onSelectBaseMap(key);
+      return;
+    }
     if (!BASE_MAP_PROVIDERS[key]) return;
-    setBaseMap(key);
+    setInternalBaseMap(key);
     try {
       localStorage.setItem(BASE_MAP_STORAGE_KEY, key);
     } catch (e) {
@@ -501,8 +620,9 @@ export default function GisMapViewer({
     }
   };
 
-  // Derive intersecting receptors ONLY when an event is selected
-  const activeExposure = activePlume?.properties?.community_exposure || selectedFire?.community_exposure;
+
+  // Derive intersecting receptors ONLY when an event is selected AND activePlume is active
+  const activeExposure = activePlume?.properties?.community_exposure;
   const corridorReceptors = useMemo(() => {
     if (!selectedFire || !activeExposure) return [];
     const list = [];
@@ -516,13 +636,15 @@ export default function GisMapViewer({
     return new Set(corridorReceptors.map(r => r.id));
   }, [corridorReceptors]);
 
-  // Derive directional dispersion plume geometry from activePlume or selectedFire
+  // Derive directional dispersion plume geometry ONLY when activePlume is active
   const directionalPlume = useMemo(() => {
-    if (!selectedFire) return null;
+    if (!selectedFire || !activePlume) return null;
 
     const lat = Number(selectedFire.latitude);
     const lon = Number(selectedFire.longitude);
     if (isNaN(lat) || isNaN(lon)) return null;
+
+    const isDirectional = activePlume.properties?.is_directional !== false;
 
     // 1. Determine DOWNWIND bearing (direction plume travels TO)
     let downwindBearing = null;
@@ -532,12 +654,11 @@ export default function GisMapViewer({
       // wind_direction_deg is the meteorological direction wind blows FROM -> plume travels TO (wind + 180) % 360
       downwindBearing = (Number(selectedFire.wind_direction_deg) + 180.0) % 360.0;
     } else {
-      // Default prevailing boundary-layer thermal drift (ENE)
-      downwindBearing = 65.0;
+      downwindBearing = isDirectional ? 65.0 : null;
     }
 
-    // 2. Determine plume length (km)
-    let lengthKm = 5.0;
+    // 2. Determine plume hazard length / radius (km)
+    let lengthKm = 3.5;
     if (activePlume?.properties?.hazard_length_km != null) {
       lengthKm = Number(activePlume.properties.hazard_length_km);
     } else if (selectedFire.hazard_radius_km != null) {
@@ -545,11 +666,47 @@ export default function GisMapViewer({
     } else {
       const frp = Number(selectedFire.frp) || 25.0;
       const windSpeed = Number(selectedFire.wind_speed_kmh) || 15.0;
-      lengthKm = Math.max(2.5, Math.min(28.0, (frp / 25.0) * (0.8 + (windSpeed / 30.0))));
+      lengthKm = Math.max(1.5, Math.min(28.0, (frp / 25.0) * (0.8 + (windSpeed / 30.0))));
     }
 
-    return createDirectionalPlume(lat, lon, downwindBearing, lengthKm);
+    // 3. Extract existing wind telemetry without fabricating
+    const rawSpeedKmh = activePlume?.properties?.wind_speed_kmh != null
+      ? activePlume.properties.wind_speed_kmh
+      : selectedFire.wind_speed_kmh;
+    const windSpeedKmh = rawSpeedKmh != null ? Number(rawSpeedKmh) : null;
+    const windSpeedMs = activePlume?.properties?.wind_speed_ms != null
+      ? activePlume.properties.wind_speed_ms
+      : (windSpeedKmh != null ? Number((windSpeedKmh / 3.6).toFixed(1)) : null);
+
+    const rawDirDeg = activePlume?.properties?.wind_direction_deg != null
+      ? activePlume.properties.wind_direction_deg
+      : selectedFire.wind_direction_deg;
+    const windDirectionDeg = rawDirDeg != null ? Math.round(Number(rawDirDeg)) : null;
+
+    // 4. Generate professional GIS downwind hazard corridor
+    const plumeData = createDownwindDispersionPolygon(
+      lat,
+      lon,
+      downwindBearing != null ? downwindBearing : 65.0,
+      lengthKm,
+      null,
+      { speedKmh: windSpeedKmh, speedMs: windSpeedMs, directionDeg: windDirectionDeg },
+      isDirectional
+    );
+
+    const windSpeedText = windSpeedKmh != null ? `${Math.round(windSpeedKmh)} km/h` : 'Unavailable';
+    const windDirText = windDirectionDeg != null ? `${windDirectionDeg}°` : '—';
+
+    return {
+      ...plumeData,
+      windSpeedKmh,
+      windSpeedMs,
+      windDirectionDeg,
+      windSpeedText,
+      windDirText
+    };
   }, [selectedFire, activePlume]);
+
 
   const currentProvider = BASE_MAP_PROVIDERS[baseMap] || BASE_MAP_PROVIDERS.dark;
 
@@ -587,6 +744,7 @@ export default function GisMapViewer({
         />
 
         <MapCameraController selectedFire={selectedFire} />
+        <PlumeBoundsFitter directionalPlume={directionalPlume} />
 
         {/* Layer 1: OSM Industrial Facility Boundary Polygons */}
         {showFacilities && facilities?.features?.map((fac) => {
@@ -631,33 +789,65 @@ export default function GisMapViewer({
         {/* Layer 2: Directional Downwind Atmospheric Dispersion Plume */}
         {showPlume && directionalPlume && (
           <>
-            {/* Outer Atmospheric Transport Envelope */}
+            {/* 1. Outer Area (Translucent lower-opacity red/orange) */}
             <Polygon
               pane="dispersion-pane"
-              positions={directionalPlume.leafletPositions}
+              positions={directionalPlume.outerPolygon || directionalPlume.leafletPositions}
               pathOptions={{
                 color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
                 weight: 1.2,
-                fillColor: activePlume?.properties?.fill_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
-                fillOpacity: 0.16,
-                dashArray: '4, 4'
+                dashArray: '4, 4',
+                fillColor: activePlume?.properties?.fill_color || (selectedFire?.is_emergency ? '#ef4444' : '#ea580c'),
+                fillOpacity: 0.12
               }}
             >
               <Popup>
-                <div className="p-1 font-sans text-xs">
-                  <div className="font-semibold text-red-300">
-                    {activePlume?.properties?.hazard_tier || 'ESTIMATED DOWNWIND DISPERSION'}
+                <div className="p-1.5 font-sans text-xs min-w-[230px]">
+                  <div className="font-semibold text-cyan-300 flex items-center justify-between border-b border-white/10 pb-1">
+                    <span>{activePlume?.properties?.status_message || activePlume?.properties?.hazard_tier || 'ESTIMATED DISPERSION'}</span>
+                    <span className="text-[9px] font-mono px-1 rounded bg-white/10 text-slate-300">
+                      {directionalPlume.isDirectional ? 'DIRECTIONAL CORRIDOR' : 'CALM / RADIAL'}
+                    </span>
                   </div>
-                  <div className="text-slate-300 mt-1 font-mono text-[11px]">
-                    Estimated Dispersion: <strong>{directionalPlume.lengthKm.toFixed(1)} km downwind</strong>
+                  <div className="space-y-1 mt-1.5 font-mono text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Wind Speed:</span>
+                      <span className="text-white font-semibold">
+                        {directionalPlume.windSpeedMs != null
+                          ? `${directionalPlume.windSpeedMs} m/s (${directionalPlume.windSpeedText})`
+                          : (directionalPlume.windSpeedText || 'Unavailable')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Direction:</span>
+                      <span className="text-white font-semibold">
+                        {directionalPlume.windDirectionDeg != null
+                          ? `${directionalPlume.windDirectionDeg}° (from)`
+                          : 'Unavailable'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-white/[0.06]">
+                      <span className="text-slate-400">Estimated Dispersion:</span>
+                      <span className="text-amber-300 font-semibold">
+                        {directionalPlume.lengthKm.toFixed(1)} km {directionalPlume.isDirectional ? 'downwind' : 'radius'}
+                      </span>
+                    </div>
+                    {directionalPlume.isDirectional && directionalPlume.downwindBearing != null && (
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Downwind Azimuth:</span>
+                        <span className="text-sky-300">{Math.round(directionalPlume.downwindBearing)}° (towards)</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-slate-300 font-mono text-[11px]">
-                    Transport Bearing: <strong>{Math.round(directionalPlume.downwindBearing)}°</strong> • Wind: {selectedFire?.wind_speed_kmh || activePlume?.properties?.wind_speed_kmh || 18} km/h
-                  </div>
+                  {activePlume?.properties?.uncertainty_description && (
+                    <div className="mt-1.5 pt-1 border-t border-white/[0.06] text-[9.5px] text-slate-400 italic leading-snug">
+                      {activePlume.properties.uncertainty_description}
+                    </div>
+                  )}
                   {activePlume?.properties?.community_exposure && (
                     <div className="mt-1.5 pt-1.5 border-t border-white/[0.1] text-[10.5px]">
-                      <span className="text-red-300 font-semibold">Affected Communities: </span>
-                      <span>
+                      <span className="text-rose-300 font-semibold">Potential Exposure: </span>
+                      <span className="text-slate-200">
                         {activePlume.properties.community_exposure.affected_settlements_count} settlements, {activePlume.properties.community_exposure.affected_schools_count} schools
                       </span>
                     </div>
@@ -666,53 +856,106 @@ export default function GisMapViewer({
               </Popup>
             </Polygon>
 
-            {/* Inner Core Corridor (dense concentration near source) */}
-            {directionalPlume.corePositions && (
+            {/* 2. Medium Plume (Translucent intermediate density) */}
+            {directionalPlume.mediumPolygon && (
               <Polygon
                 pane="dispersion-pane"
-                positions={directionalPlume.corePositions}
+                positions={directionalPlume.mediumPolygon}
                 pathOptions={{
                   color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
-                  weight: 1.0,
-                  fillColor: activePlume?.properties?.fill_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
-                  fillOpacity: 0.28,
-                  stroke: false
+                  weight: 0.8,
+                  opacity: 0.45,
+                  fillColor: activePlume?.properties?.fill_color || (selectedFire?.is_emergency ? '#ef4444' : '#ea580c'),
+                  fillOpacity: 0.20
                 }}
               />
             )}
 
-            {/* Subtle Downwind Dispersion Centerline */}
-            <Polyline
-              pane="dispersion-pane"
-              positions={directionalPlume.centerline}
-              pathOptions={{
-                color: activePlume?.properties?.stroke_color || (selectedFire?.is_emergency ? '#ef4444' : '#f97316'),
-                weight: 1.2,
-                dashArray: '4, 4',
-                opacity: 0.65
-              }}
-            />
+            {/* 3. Core Plume (Stronger translucent red/orange near incident) */}
+            {directionalPlume.corePolygon && (
+              <Polygon
+                pane="dispersion-pane"
+                positions={directionalPlume.corePolygon}
+                pathOptions={{
+                  color: selectedFire?.is_emergency ? '#ef4444' : '#dc2626',
+                  weight: 1.0,
+                  opacity: 0.75,
+                  fillColor: selectedFire?.is_emergency ? '#ef4444' : '#dc2626',
+                  fillOpacity: 0.35
+                }}
+              />
+            )}
 
-            {/* Downwind Vector Directional Arrowhead */}
-            <Polyline
-              pane="dispersion-pane"
-              positions={directionalPlume.arrow}
-              pathOptions={{
-                color: '#ffffff',
-                weight: 2.0,
-                opacity: 0.85
-              }}
-            />
+            {/* 4. Centerline: Subtle brighter line */}
+            {directionalPlume.centerline && (
+              <Polyline
+                pane="dispersion-pane"
+                positions={directionalPlume.centerline}
+                pathOptions={{
+                  color: '#fdba74',
+                  weight: 1.5,
+                  dashArray: '5, 5',
+                  opacity: 0.75
+                }}
+              />
+            )}
+
+            {/* 5. Wind Arrow & Directional Indicator near incident */}
+            {directionalPlume.isDirectional && directionalPlume.windIndicatorPosition && (
+              <Marker
+                pane="dispersion-pane"
+                position={directionalPlume.windIndicatorPosition}
+                interactive={false}
+                icon={L.divIcon({
+                  className: 'gis-wind-indicator-marker',
+                  html: `
+                    <div style="display: inline-flex; align-items: center; gap: 5px; background: rgba(10, 17, 27, 0.90); border: 1px solid rgba(56, 189, 248, 0.45); padding: 2px 7px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.6); pointer-events: none; white-space: nowrap; transform: translate(-50%, -130%); font-family: ui-monospace, monospace; font-size: 9.5px; color: #f1f5f9;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${directionalPlume.downwindBearing}deg); transform-origin: center; display: inline-block;">
+                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                        <polyline points="5 12 12 5 19 12"></polyline>
+                      </svg>
+                      <span style="color: #38bdf8; font-weight: 700;">WIND</span>
+                      <span>${directionalPlume.windSpeedText}</span>
+                      <span style="color: #64748b;">•</span>
+                      <span>${directionalPlume.windDirText}</span>
+                    </div>
+                  `,
+                  iconSize: [120, 24],
+                  iconAnchor: [60, 12]
+                })}
+              />
+            )}
+
+            {/* 6. Map Label: ESTIMATED DOWNWIND DISPERSION */}
+            {directionalPlume.labelPosition && (
+              <Marker
+                pane="dispersion-pane"
+                position={directionalPlume.labelPosition}
+                interactive={false}
+                icon={L.divIcon({
+                  className: 'gis-dispersion-badge-marker',
+                  html: `
+                    <div style="display: inline-block; background: rgba(10, 17, 27, 0.92); border: 1px solid rgba(249, 115, 22, 0.45); border-radius: 4px; padding: 2.5px 7px; box-shadow: 0 2px 10px rgba(0,0,0,0.6); pointer-events: none; white-space: nowrap; font-family: ui-monospace, monospace; transform: translate(-50%, -50%);">
+                      <div style="color: #fb923c; font-size: 8.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
+                        ESTIMATED DOWNWIND DISPERSION
+                      </div>
+                      <div style="color: #cbd5e1; font-size: 9.5px; margin-top: 1px;">
+                        Radius: <span style="color: #fde047; font-weight: 600;">${directionalPlume.lengthKm.toFixed(1)} km</span>
+                        ${directionalPlume.isDirectional && directionalPlume.downwindBearing != null ? ` • Downwind: <span style="color: #7dd3fc; font-weight: 600;">${Math.round(directionalPlume.downwindBearing)}°</span>` : ''}
+                      </div>
+                    </div>
+                  `,
+                  iconSize: [170, 32],
+                  iconAnchor: [85, 16]
+                })}
+              />
+            )}
           </>
         )}
 
         {/* Layer 3: Sensitive Locations within Estimated Exposure Corridor (Rendered ONLY when an event is selected) */}
         {showExposure && selectedFire && corridorReceptors.map((rec) => {
           const type = rec.type;
-          if (type === 'settlement' && !showSettlements) return null;
-          if (type === 'school' && !showSchools) return null;
-          if (type === 'hospital' && !showHospitals) return null;
-
           const lat = Number(rec.latitude);
           const lon = Number(rec.longitude);
           if (isNaN(lat) || isNaN(lon)) return null;
@@ -746,6 +989,115 @@ export default function GisMapViewer({
             </Marker>
           );
         })}
+
+        {/* Layer 3.5: Optional Supporting Satellite Evidence Layers (Rendered ONLY when real data is available) */}
+        {showOpticalContext && selectedFire && (() => {
+          const lat = Number(selectedFire.latitude);
+          const lon = Number(selectedFire.longitude);
+          if (isNaN(lat) || isNaN(lon)) return null;
+
+          const supporting = selectedFire?.satellite_evidence?.supporting || [];
+          const opticalScene = supporting.find(s => 
+            (s.source === 'Landsat' || s.source === 'Sentinel-2') && s.available
+          );
+
+          if (!opticalScene) return null;
+
+          // 1.8km x 1.8km context bounding box centered on incident coordinate
+          const deltaLat = 0.008;
+          const deltaLon = 0.008 / Math.cos((lat * Math.PI) / 180);
+          const bounds = [
+            [lat - deltaLat, lon - deltaLon],
+            [lat - deltaLat, lon + deltaLon],
+            [lat + deltaLat, lon + deltaLon],
+            [lat + deltaLat, lon - deltaLon],
+            [lat - deltaLat, lon - deltaLon]
+          ];
+
+          return (
+            <React.Fragment key={`sat-optical-${selectedFire.fire_id}`}>
+              <Polygon
+                positions={bounds}
+                pathOptions={{
+                  color: '#10b981',
+                  weight: 1.2,
+                  dashArray: '5, 5',
+                  opacity: 0.8,
+                  fillColor: '#10b981',
+                  fillOpacity: 0.05
+                }}
+              />
+              <Marker
+                position={[lat + deltaLat, lon - deltaLon]}
+                interactive={false}
+                icon={L.divIcon({
+                  className: 'gis-optical-context-tag',
+                  html: `
+                    <div style="background: rgba(6, 78, 59, 0.92); border: 1px solid rgba(52, 211, 153, 0.5); padding: 1.5px 6px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 8.5px; color: #a7f3d0; white-space: nowrap; transform: translate(0, -100%); pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                      ${opticalScene.platform || 'S2 / Landsat'} (${opticalScene.resolution || '10-30m'}) • Optical Context
+                    </div>
+                  `,
+                  iconSize: [160, 18],
+                  iconAnchor: [0, 0]
+                })}
+              />
+            </React.Fragment>
+          );
+        })()}
+
+        {showModisContext && selectedFire && (() => {
+          const lat = Number(selectedFire.latitude);
+          const lon = Number(selectedFire.longitude);
+          if (isNaN(lat) || isNaN(lon)) return null;
+
+          const supporting = selectedFire?.satellite_evidence?.supporting || [];
+          const modisObs = supporting.find(s => 
+            s.source === 'MODIS' && s.available
+          );
+
+          if (!modisObs) return null;
+
+          // 1.0km x 1.0km thermal pixel footprint centered on coordinate
+          const deltaLat = 0.0045;
+          const deltaLon = 0.0045 / Math.cos((lat * Math.PI) / 180);
+          const bounds = [
+            [lat - deltaLat, lon - deltaLon],
+            [lat - deltaLat, lon + deltaLon],
+            [lat + deltaLat, lon + deltaLon],
+            [lat + deltaLat, lon - deltaLon],
+            [lat - deltaLat, lon - deltaLon]
+          ];
+
+          return (
+            <React.Fragment key={`sat-modis-${selectedFire.fire_id}`}>
+              <Polygon
+                positions={bounds}
+                pathOptions={{
+                  color: '#f59e0b',
+                  weight: 1.2,
+                  dashArray: '4, 4',
+                  opacity: 0.8,
+                  fillColor: '#f59e0b',
+                  fillOpacity: 0.07
+                }}
+              />
+              <Marker
+                position={[lat - deltaLat, lon - deltaLon]}
+                interactive={false}
+                icon={L.divIcon({
+                  className: 'gis-modis-context-tag',
+                  html: `
+                    <div style="background: rgba(120, 53, 15, 0.92); border: 1px solid rgba(251, 191, 36, 0.5); padding: 1.5px 6px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 8.5px; color: #fde68a; white-space: nowrap; transform: translate(0, 4px); pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                      MODIS 1km Thermal Context Pixel
+                    </div>
+                  `,
+                  iconSize: [160, 18],
+                  iconAnchor: [0, 0]
+                })}
+              />
+            </React.Fragment>
+          );
+        })()}
 
         {/* Layer 4: Thermal Hotspot Markers */}
         {showThermalEvents && fires.map((fire, idx) => {
@@ -800,166 +1152,216 @@ export default function GisMapViewer({
       </MapContainer>
 
       {/* Floating Layer Control Panel (Top-Right, offsets when inspector is open) */}
-      <div 
-        ref={layerControlRef}
-        className={`absolute top-3 ${selectedFire ? 'right-3 md:right-[410px]' : 'right-3'} z-[950] font-sans select-none transition-all duration-300`}
-      >
-        {/* Mobile Compact Floating Button (When collapsed on mobile screens) */}
-        {!layersOpen && (
-          <button
-            onClick={() => setLayersOpen(true)}
-            className="sm:hidden w-10 h-10 rounded-xl glass-panel shadow-2xl flex items-center justify-center border border-white/[0.15] bg-[#090d14]/95 text-slate-100 hover:text-white cursor-pointer active:scale-95 transition-all"
-            title="Open Map Layers"
-          >
-            <span className="text-base leading-none">🗺</span>
-          </button>
-        )}
-
-        <div className={`glass-panel rounded-xl shadow-2xl overflow-hidden border border-white/[0.12] bg-[#090d14]/95 backdrop-blur-md text-slate-100 w-[260px] sm:w-[280px] max-w-[calc(100vw-24px)] ${!layersOpen ? 'hidden sm:block' : 'block'}`}>
-          <button
-            onClick={() => setLayersOpen(!layersOpen)}
-            className="w-full px-3 py-2 flex items-center justify-between text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors bg-white/[0.03] hover:bg-white/[0.06]"
-            title="Toggle Map Layers"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm leading-none">🗺</span>
-              <span className="font-mono tracking-wider text-[11px] uppercase font-bold text-slate-200">Map Layers</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.5 rounded">
-                {currentProvider.name.split(' ')[0]}
-              </span>
-              {layersOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
-            </div>
-          </button>
-
-          {layersOpen && (
-            <div className="p-3 border-t border-white/[0.08] space-y-3.5 text-[11px] max-h-[calc(100vh-140px)] overflow-y-auto">
-              {/* BASE MAP SECTION */}
-              <div>
-                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span className="text-cyan-400 font-bold">Base Map</span>
-                  <span className="text-[9px] text-slate-500 font-mono">1 active</span>
-                </div>
-                <div className="space-y-1">
-                  {Object.values(BASE_MAP_PROVIDERS).map((p) => {
-                    const isSelected = baseMap === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => handleSelectBaseMap(p.id)}
-                        className={`w-full text-left p-2 rounded-lg transition-all flex items-start gap-2.5 cursor-pointer border ${
-                          isSelected
-                            ? 'bg-cyan-950/50 border-cyan-500/60 text-white shadow-[0_0_12px_rgba(6,182,212,0.15)]'
-                            : 'bg-white/[0.02] border-white/[0.05] text-slate-300 hover:bg-white/[0.06] hover:text-white'
-                        }`}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border transition-all ${
-                            isSelected ? 'border-cyan-400 bg-cyan-500' : 'border-slate-600 bg-transparent'
-                          }`}>
-                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-slate-950"></span>}
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className={`font-medium ${isSelected ? 'text-cyan-300 font-semibold' : 'text-slate-200'}`}>
-                              {p.name}
-                            </span>
-                            {isSelected && (
-                              <span className="text-[8.5px] font-mono text-cyan-300 px-1 py-0.2 rounded bg-cyan-900/60 border border-cyan-700/60 shrink-0">
-                                ACTIVE
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
-                            {p.tagline}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ANALYSIS OVERLAYS SECTION */}
-              <div className="pt-2.5 border-t border-white/[0.08]">
-                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span className="text-orange-400 font-bold">Analysis Overlays</span>
-                  <span className="text-[9px] text-slate-500 font-mono">Independent</span>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.8)]"></span>
-                      <span className="font-medium">Thermal Events</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showThermalEvents}
-                      onChange={(e) => setShowThermalEvents(e.target.checked)}
-                      className="rounded accent-orange-500 cursor-pointer w-3.5 h-3.5"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-sm bg-sky-500 border border-sky-400/60"></span>
-                      <span className="font-medium">Industrial Facilities</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showFacilities}
-                      onChange={(e) => setShowFacilities(e.target.checked)}
-                      className="rounded accent-sky-500 cursor-pointer w-3.5 h-3.5"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
-                    <div className="flex items-center gap-2">
-                      <Wind className="w-3.5 h-3.5 text-red-400" />
-                      <span className="font-medium">Estimated Dispersion</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showPlume}
-                      onChange={(e) => setShowPlume(e.target.checked)}
-                      className="rounded accent-red-500 cursor-pointer w-3.5 h-3.5"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"></span>
-                      <span className="font-medium">Community Exposure</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showExposure}
-                      onChange={(e) => setShowExposure(e.target.checked)}
-                      className="rounded accent-cyan-400 cursor-pointer w-3.5 h-3.5"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="font-medium">OSM Context</span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showOsmContext}
-                      onChange={(e) => setShowOsmContext(e.target.checked)}
-                      className="rounded accent-amber-400 cursor-pointer w-3.5 h-3.5"
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
+      {!hideFloatingSelector && (
+        <div 
+          ref={layerControlRef}
+          className={`absolute top-3 ${selectedFire ? 'right-3 md:right-[410px]' : 'right-3'} z-[950] font-sans select-none transition-all duration-300`}
+        >
+          {/* Mobile Compact Floating Button (When collapsed on mobile screens) */}
+          {!layersOpen && (
+            <button
+              onClick={() => setLayersOpen(true)}
+              className="sm:hidden w-10 h-10 rounded-xl glass-panel shadow-2xl flex items-center justify-center border border-white/[0.15] bg-[#090d14]/95 text-slate-100 hover:text-white cursor-pointer active:scale-95 transition-all"
+              title="Open Map Layers"
+            >
+              <span className="text-base leading-none">🗺</span>
+            </button>
           )}
+
+          <div className={`glass-panel rounded-xl shadow-2xl overflow-hidden border border-white/[0.12] bg-[#090d14]/95 backdrop-blur-md text-slate-100 w-[260px] sm:w-[280px] max-w-[calc(100vw-24px)] ${!layersOpen ? 'hidden sm:block' : 'block'}`}>
+            <button
+              onClick={() => setLayersOpen(!layersOpen)}
+              className="w-full px-3 py-2 flex items-center justify-between text-xs font-semibold text-slate-200 hover:text-white cursor-pointer transition-colors bg-white/[0.03] hover:bg-white/[0.06]"
+              title="Toggle Map Layers"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm leading-none">🗺</span>
+                <span className="font-mono tracking-wider text-[11px] uppercase font-bold text-slate-200">Map Layers</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.5 rounded">
+                  {currentProvider.name.split(' ')[0]}
+                </span>
+                {layersOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+              </div>
+            </button>
+
+            {layersOpen && (
+              <div className="p-3 border-t border-white/[0.08] space-y-3.5 text-[11px] max-h-[calc(100vh-140px)] overflow-y-auto">
+                {/* BASE MAP SECTION */}
+                <div>
+                  <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="text-cyan-400 font-bold">Base Map</span>
+                    <span className="text-[9px] text-slate-500 font-mono">1 active</span>
+                  </div>
+                  <div className="space-y-1">
+                    {Object.values(BASE_MAP_PROVIDERS).map((p) => {
+                      const isSelected = baseMap === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSelectBaseMap(p.id)}
+                          className={`w-full text-left p-2 rounded-lg transition-all flex items-start gap-2.5 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-cyan-950/50 border-cyan-500/60 text-white shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                              : 'bg-white/[0.02] border-white/[0.05] text-slate-300 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'border-cyan-400 bg-cyan-500' : 'border-slate-600 bg-transparent'
+                            }`}>
+                              {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-slate-950"></span>}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`font-medium ${isSelected ? 'text-cyan-300 font-semibold' : 'text-slate-200'}`}>
+                                {p.name}
+                              </span>
+                              {isSelected && (
+                                <span className="text-[8.5px] font-mono text-cyan-300 px-1 py-0.2 rounded bg-cyan-900/60 border border-cyan-700/60 shrink-0">
+                                  ACTIVE
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
+                              {p.tagline}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ANALYSIS OVERLAYS SECTION */}
+                <div className="pt-2.5 border-t border-white/[0.08]">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="text-orange-400 font-bold">Analysis Overlays</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Independent</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.8)]"></span>
+                        <span className="font-medium">Thermal Events</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showThermalEvents}
+                        onChange={(e) => setShowThermalEvents(e.target.checked)}
+                        className="rounded accent-orange-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-sky-500 border border-sky-400/60"></span>
+                        <span className="font-medium">Industrial Facilities</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showFacilities}
+                        onChange={(e) => setShowFacilities(e.target.checked)}
+                        className="rounded accent-sky-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <Wind className="w-3.5 h-3.5 text-red-400" />
+                        <span className="font-medium">Estimated Dispersion</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showPlume}
+                        onChange={(e) => setShowPlume(e.target.checked)}
+                        className="rounded accent-red-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"></span>
+                        <span className="font-medium">Community Exposure</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showExposure}
+                        onChange={(e) => setShowExposure(e.target.checked)}
+                        className="rounded accent-cyan-400 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="font-medium">OSM Context</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showOsmContext}
+                        onChange={(e) => setShowOsmContext(e.target.checked)}
+                        className="rounded accent-amber-400 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* SATELLITE EVIDENCE SECTION */}
+                <div className="pt-2.5 border-t border-white/[0.08]">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="text-cyan-400 font-bold">Satellite Evidence</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Multi-Sensor</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.8)]"></span>
+                        <span className="font-medium">VIIRS Detection (Primary)</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showThermalEvents}
+                        onChange={(e) => setShowThermalEvents(e.target.checked)}
+                        className="rounded accent-orange-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 border border-emerald-300/60"></span>
+                        <span className="font-medium">Landsat / Sentinel-2 Context</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showOpticalContext}
+                        onChange={(e) => setInternalOptical(e.target.checked)}
+                        className="rounded accent-emerald-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-1.5 rounded hover:bg-white/[0.04] cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 border border-amber-300/60"></span>
+                        <span className="font-medium">MODIS Thermal Context</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showModisContext}
+                        onChange={(e) => setInternalModis(e.target.checked)}
+                        className="rounded accent-amber-500 cursor-pointer w-3.5 h-3.5"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Map Symbology Legend */}
       <div 

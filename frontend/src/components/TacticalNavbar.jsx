@@ -8,11 +8,16 @@ export default function TacticalNavbar({
   activeEmergencyCount,
   onBackToLanding,
   onOpenDemo,
+  onBackToPlatform,
   syncStatus = 'LIVE',
   syncMetadata = {},
   newEventsCount = 0,
   secondsToNextSync = 300,
-  onTriggerSync
+  onTriggerSync,
+  isDemoMode = false,
+  onToggleDemoMode,
+  totalEventsCount = null,
+  criticalCount = null
 }) {
   const [istTime, setIstTime] = useState('');
   const [utcTime, setUtcTime] = useState('');
@@ -29,14 +34,15 @@ export default function TacticalNavbar({
   }, []);
 
   const kpis = summary?.kpis || {
-    total_active_hotspots: 12,
-    critical_industrial_emergencies: 2,
-    industrial_noise_filtered_pct: 33.3
+    total_active_hotspots: 0,
+    critical_industrial_emergencies: 0,
+    industrial_noise_filtered_pct: 0.0
   };
 
-  const emergencyCount = activeEmergencyCount ?? kpis.critical_industrial_emergencies;
+  const totalEvents = totalEventsCount ?? kpis.total_active_hotspots;
+  const emergencyCount = criticalCount ?? activeEmergencyCount ?? kpis.critical_industrial_emergencies;
   const hasEmergencies = emergencyCount > 0;
-  const lastSync = syncMetadata?.last_sync_utc || '08:45:00 UTC';
+  const lastSync = syncMetadata?.last_sync_utc || '—';
 
   const formatCountdown = (secs) => {
     const m = Math.floor(secs / 60);
@@ -56,16 +62,6 @@ export default function TacticalNavbar({
           >
             <ArrowLeft className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-[11px] tracking-wider uppercase font-semibold">OVERVIEW</span>
-          </button>
-        )}
-
-        {onOpenDemo && (
-          <button
-            onClick={onOpenDemo}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-orange-500/10 to-amber-500/10 hover:from-orange-500/20 hover:to-amber-500/20 border border-orange-500/30 text-orange-300 hover:text-white transition-all text-xs font-mono cursor-pointer"
-            title="Open Interactive Demonstration Walkthrough"
-          >
-            <span>✦ DEMO</span>
           </button>
         )}
 
@@ -98,7 +94,7 @@ export default function TacticalNavbar({
         </div>
       </div>
 
-      {/* CENTER / STATUS: Multi-Satellite VIIRS + 5-min Sync Status + Critical anomalies */}
+      {/* CENTER / STATUS: Multi-Satellite VIIRS + 5-min Sync Status + Critical anomalies + DEMO SCENARIO */}
       <div className="hidden lg:flex items-center gap-3 text-xs">
         {/* Multi-Satellite Provenance Badge */}
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/[0.03] border border-white/[0.06]">
@@ -123,18 +119,22 @@ export default function TacticalNavbar({
             syncStatus === 'STALE' ? 'bg-amber-500' : 'bg-red-500'
           }`}></span>
           <span className="font-semibold text-slate-200">
-            {syncStatus === 'SYNCING' ? 'SYNCING...' : 'LIVE 5M SYNC'}
+            {syncStatus === 'SYNCING' ? 'SYNCING...' : isDemoMode ? 'DEMO TIMELINE' : 'LIVE 5M SYNC'}
           </span>
-          <span className="text-slate-600">•</span>
-          <span className="text-slate-400 text-[10px]">
-            Next in {formatCountdown(secondsToNextSync)}
-          </span>
-          {newEventsCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 font-bold text-[9.5px] border border-orange-500/30">
-              +{newEventsCount} NEW
-            </span>
+          {!isDemoMode && (
+            <>
+              <span className="text-slate-600">•</span>
+              <span className="text-slate-400 text-[10px]">
+                Next in {formatCountdown(secondsToNextSync)}
+              </span>
+              {newEventsCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 font-bold text-[9.5px] border border-orange-500/30">
+                  +{newEventsCount} NEW
+                </span>
+              )}
+              <RefreshCw className={`w-3 h-3 text-slate-400 ml-1 ${syncStatus === 'SYNCING' ? 'animate-spin text-amber-400' : ''}`} />
+            </>
           )}
-          <RefreshCw className={`w-3 h-3 text-slate-400 ml-1 ${syncStatus === 'SYNCING' ? 'animate-spin text-amber-400' : ''}`} />
         </div>
 
         {/* PRIMARY: CRITICAL ANOMALIES COUNT */}
@@ -150,13 +150,48 @@ export default function TacticalNavbar({
         </div>
       </div>
 
-      {/* RIGHT: Events count, Critical count, IST & UTC */}
+      {/* RIGHT: Demo Actions + Events count, Critical count, IST & UTC */}
       <div className="flex items-center gap-3 text-xs font-mono">
+        {/* If Demo Mode: Show DEMO SCENARIO badge and BACK TO PLATFORM button */}
+        {isDemoMode ? (
+          <div className="flex items-center gap-2">
+            <div 
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-mono font-bold tracking-wider border bg-amber-950/70 text-amber-300 border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+              title="Controlled Presentation Demo Scenario Active"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+              <span>DEMO SCENARIO</span>
+            </div>
+
+            {onBackToPlatform && (
+              <button
+                onClick={onBackToPlatform}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10.5px] font-mono font-semibold tracking-wider border border-white/[0.12] bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 hover:text-white transition-all cursor-pointer shadow-sm"
+                title="Return to Original Live Platform (/platform)"
+              >
+                <ArrowLeft className="w-3 h-3 text-slate-400" />
+                <span>BACK TO PLATFORM</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          /* If Real Platform: Show OPEN DEMO button */
+          onOpenDemo && (
+            <button
+              onClick={onOpenDemo}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-mono font-bold tracking-wider border border-orange-500/40 hover:border-orange-500/60 bg-gradient-to-r from-orange-500/15 to-amber-500/15 hover:from-orange-500/25 hover:to-amber-500/25 text-orange-300 hover:text-white transition-all cursor-pointer shadow-sm"
+              title="Open Demo Presentation Platform (/demo)"
+            >
+              <span>✦ OPEN DEMO</span>
+            </button>
+          )
+        )}
+
         <div className="flex items-center gap-2">
           <div className="flex items-baseline gap-1 px-2 py-0.5 rounded bg-white/[0.03] border border-white/[0.05]">
             <span className="text-[10px] uppercase font-semibold text-slate-400 font-sans">EVENTS:</span>
             <span className="font-bold text-white text-[12px]">
-              {kpis.total_active_hotspots}
+              {totalEvents}
             </span>
           </div>
 

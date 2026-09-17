@@ -8,8 +8,7 @@ import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   RotateCcw, RotateCw, Navigation, Check, Sparkles
 } from 'lucide-react';
-import Cesium3DInspector from './Cesium3DInspector';
-import { createDirectionalPlume } from './GisMapViewer';
+import { createDirectionalPlume, createDownwindDispersionPolygon } from './GisMapViewer';
 
 function formatConfidence(conf) {
   if (conf == null || conf === '') return 'Not Available';
@@ -47,16 +46,23 @@ function formatUtcTime(acqDate, acqTime) {
 }
 
 export default function Cesium3DViewer({
-  selectedFire,
+  fires = [],
+  selectedFire = null,
+  onSelectFire = () => {},
   facilities = null,
   sensitiveLocations = null,
   activePlume = null,
   onExit3D,
+  onReturnTo2D,
   onTogglePlume,
   isPlumeActive,
   plumeLoading,
   locateTrigger = 0,
-  onOpenReport = null
+  onOpenReport = null,
+  showThermal: propShowThermal,
+  showFacility: propShowFacility,
+  showPlume: propShowPlume,
+  showReceptors: propShowReceptors
 }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
@@ -65,16 +71,16 @@ export default function Cesium3DViewer({
   const [viewer, setViewer] = useState(null);
   const [initError, setInitError] = useState(null);
 
-  // Non-blocking cinematic flight HUD state (Sections 1, 2, 26)
+  // Non-blocking cinematic flight HUD state
   const [isFlying, setIsFlying] = useState(false);
   const [flightStage, setFlightStage] = useState('');
-  const [inspectorExpanded, setInspectorExpanded] = useState(true);
   const [activeCard, setActiveCard] = useState(null); // { type: 'thermal' | 'facility' | 'receptor', data: ... }
 
-  // 3D Data Source Mode: 'osm_buildings' | 'terrain_imagery'
-  const [tilesetMode, setTilesetMode] = useState('osm_buildings');
-  const [tilesetStatusText, setTilesetStatusText] = useState('3D DATA UNAVAILABLE');
-  const tilesetRef = useRef(null);
+  // 3D Data Source Mode: Pure Cesium Stack (World Terrain + OSM Buildings)
+  const [tilesetMode, setTilesetMode] = useState('cesium_native');
+  const [tilesetStatusText, setTilesetStatusText] = useState('Loading 3D Terrain & Buildings...');
+  const [tilesetErrorDetail, setTilesetErrorDetail] = useState(null);
+  const osmBuildingsRef = useRef(null);
   const terrainProviderRef = useRef(null);
   const lastFlownRef = useRef({ fireId: null, locateTrigger: -1 });
 
@@ -88,16 +94,24 @@ export default function Cesium3DViewer({
   });
 
   // Layer toggles
-  const [showBuildings, setShowBuildings] = useState(true);
-  const [showSatellite, setShowSatellite] = useState(true);
-  const [showTerrain, setShowTerrain] = useState(true);
-  const [showThermal, setShowThermal] = useState(true);
-  const [showFacility, setShowFacility] = useState(true);
-  const [showPlume, setShowPlume] = useState(true);
-  const [showReceptors, setShowReceptors] = useState(true);
+  const [internalBuildings, setShowBuildings] = useState(true);
+  const [internalSatellite, setShowSatellite] = useState(true);
+  const [internalTerrain, setShowTerrain] = useState(true);
+  const [internalThermal, setShowThermal] = useState(true);
+  const [internalFacility, setShowFacility] = useState(true);
+  const [internalPlume, setShowPlume] = useState(true);
+  const [internalReceptors, setShowReceptors] = useState(true);
   const [showRoads, setShowRoads] = useState(false);
+
+  const showThermal = propShowThermal !== undefined ? propShowThermal : internalThermal;
+  const showFacility = propShowFacility !== undefined ? propShowFacility : internalFacility;
+  const showPlume = propShowPlume !== undefined ? propShowPlume : internalPlume;
+  const showReceptors = propShowReceptors !== undefined ? propShowReceptors : internalReceptors;
+  const showBuildings = internalBuildings;
+  const showSatellite = internalSatellite;
+  const showTerrain = internalTerrain;
+
   const [layersMenuOpen, setLayersMenuOpen] = useState(false);
-  const [navControlsExpanded, setNavControlsExpanded] = useState(true);
 
   // References to dynamic entity groups
   const thermalDataSourceRef = useRef(null);
@@ -140,7 +154,6 @@ export default function Cesium3DViewer({
         }
       }
     }
-    // Fallback: 28 degrees gives excellent oblique angle revealing road network and industrial layout
     return 28.0;
   }, []);
 
@@ -153,64 +166,110 @@ export default function Cesium3DViewer({
     }));
   }, []);
 
-  // Multi-Stage Cinematic Camera Flight: Continuous, Map Always Visible (Sections 1, 3, 4, 5)
-  const flyToIncident = useCallback((fire, options = {}) => {
+  // Task 6: Calculate final site-level oblique inspection camera (250m - 500m)
+  // Baseline site-level inspection reference: 1600m overview envelope with 350m final inspection
+  const calculateInspectionCamera = useCallback((fire) => {
+    if (!fire) return null;
+    const lat = Number(fire.latitude);
+    const lon = Number(fire.longitude);
+    if (isNaN(lat) || isNaN(lon)) return null;
+
     const v = viewerRef.current || viewer;
-    if (!v || !fire) return;
 
-    // Single source of truth: authoritative NASA FIRMS coordinates
-    const latitude = Number(fire.latitude);
-    const longitude = Number(fire.longitude);
-    if (isNaN(latitude) || isNaN(longitude)) return;
-
-    const lat = latitude;
-    const lon = longitude;
-    targetLatRef.current = lat;
-    targetLonRef.current = lon;
-
-    console.log(`[AGNIDRISHTI 3D] Authoritative FIRMS Observation: latitude = ${lat.toFixed(6)}, longitude = ${lon.toFixed(6)}`);
-
-    // Cancel any active flight and get fresh flight ID
-    v.camera.cancelFlight();
-    const currentFlightId = ++flightIdRef.current;
-
-    const targetPos = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
-    const headingDeg = calculateInspectionHeading(fire);
-    const headingRad = typeof headingDeg === 'number' && headingDeg < 7 
-      ? headingDeg 
-      : Cesium.Math.toRadians(headingDeg);
-
-    // Destination preloading while camera flies
-    if (tilesetRef.current) {
-      try {
-        tilesetRef.current.preloadFlightDestinations = true;
-      } catch (e) {
-        // ignore
+    // 1. Target coordinate elevation on terrain
+    let groundHeight = 0;
+    if (v?.scene?.globe) {
+      const carto = Cesium.Cartographic.fromDegrees(lon, lat);
+      const h = v.scene.globe.getHeight(carto);
+      if (typeof h === 'number' && !isNaN(h) && h > -100) {
+        groundHeight = h;
       }
     }
 
-    // Helper to fly camera stage asynchronously with frame gap
-    const flyStage = (dest, heading, pitch, duration, easing) => {
+    // 2. Heading oriented toward the incident / facility layout
+    const headingDeg = calculateInspectionHeading(fire);
+    const headingRad = typeof headingDeg === 'number' && headingDeg < 7 
+      ? headingDeg 
+      : Cesium.Math.toRadians(headingDeg || 28.0);
+
+    // 3. Final inspection altitude: strictly 250m - 500m (Target: 350m)
+    // Low oblique perspective with pitch -30°
+    const frp = Number(fire.frp) || 25;
+    const inspectAltitude = Math.min(480, Math.max(280, 320 + (frp / 250) * 80));
+    const inspectPitchDeg = -30.0;
+    const pitchRad = Cesium.Math.toRadians(inspectPitchDeg);
+    const tanPitch = Math.tan(Math.abs(pitchRad));
+    const groundDistMeters = Math.max(260, Math.round(inspectAltitude / tanPitch * 0.85));
+
+    const dLatDeg = (groundDistMeters * Math.cos(headingRad)) / 111320;
+    const dLonDeg = (groundDistMeters * Math.sin(headingRad)) / (111320 * Math.cos(lat * Math.PI / 180));
+    const destPos = Cesium.Cartesian3.fromDegrees(lon - dLonDeg, lat - dLatDeg, groundHeight + inspectAltitude);
+
+    return {
+      lat,
+      lon,
+      groundHeight,
+      inspectAltitude,
+      inspectPitchDeg,
+      pitchRad,
+      headingRad,
+      destPos,
+      groundDistMeters
+    };
+  }, [viewer, calculateInspectionHeading]);
+
+  // Task 6: Controlled Multi-Stage Camera Flight Sequence:
+  // 1. Regional overview (~25-35 km)
+  // 2. Approach target (~8-12 km)
+  // 3. Low-altitude approach (~1-3 km, ~1800m)
+  // 4. Final site-level oblique inspection (250-500m altitude, ~350m, pitch -30°)
+  const flyToIncident = useCallback(async (fire, options = {}) => {
+    const v = viewerRef.current || viewer;
+    if (!v || !fire) return;
+
+    const cameraConfig = calculateInspectionCamera(fire);
+    if (!cameraConfig) return;
+
+    const { lat, lon, destPos: finalPos, headingRad, pitchRad, inspectAltitude, groundHeight } = cameraConfig;
+    targetLatRef.current = lat;
+    targetLonRef.current = lon;
+
+    // Increment flight ID to supersede previous async chains
+    const currentFlightId = ++flightIdRef.current;
+    v.camera.cancelFlight();
+
+    // Preload destinations in 3D tileset if available
+    if (osmBuildingsRef.current) {
+      try {
+        osmBuildingsRef.current.preloadFlightDestinations = true;
+      } catch (e) {}
+    }
+
+    setIsFlying(true);
+
+    // Helper for computing stage positions
+    const getStagePos = (distMeters, altMeters) => {
+      const dLat = (distMeters * Math.cos(headingRad)) / 111320;
+      const dLon = (distMeters * Math.sin(headingRad)) / (111320 * Math.cos(lat * Math.PI / 180));
+      return Cesium.Cartesian3.fromDegrees(lon - dLon, lat - dLat, groundHeight + altMeters);
+    };
+
+    // Helper to fly to a stage with promise resolution
+    const flyStage = (dest, heading, pitch, duration, stageName, easing = Cesium.EasingFunction.QUADRATIC_IN_OUT) => {
       return new Promise((resolve) => {
-        if (flightIdRef.current !== currentFlightId) {
+        if (!v || v.isDestroyed() || flightIdRef.current !== currentFlightId) {
           resolve(false);
           return;
         }
+        setFlightStage(stageName);
         v.camera.flyTo({
           destination: dest,
-          orientation: {
-            heading: heading,
-            pitch: pitch,
-            roll: 0.0
-          },
-          duration: duration,
+          orientation: { heading, pitch, roll: 0.0 },
+          duration,
           easingFunction: easing,
           complete: () => {
-            if (flightIdRef.current !== currentFlightId) {
-              resolve(false);
-              return;
-            }
-            requestAnimationFrame(() => resolve(true));
+            if (flightIdRef.current === currentFlightId) resolve(true);
+            else resolve(false);
           },
           cancel: () => {
             resolve(false);
@@ -219,83 +278,66 @@ export default function Cesium3DViewer({
       });
     };
 
-    // Helper to compute camera offset position behind the target along approach heading
-    const computeStagePos = (groundDistMeters, altitudeMeters) => {
-      const dLatDeg = (groundDistMeters * Math.cos(headingRad)) / 111320;
-      const dLonDeg = (groundDistMeters * Math.sin(headingRad)) / (111320 * Math.cos(lat * Math.PI / 180));
-      return Cesium.Cartesian3.fromDegrees(lon - dLonDeg, lat - dLatDeg, altitudeMeters);
-    };
+    try {
+      if (options.instant) {
+        v.camera.setView({
+          destination: finalPos,
+          orientation: { heading: headingRad, pitch: pitchRad, roll: 0.0 }
+        });
+      } else {
+        const carto = v.camera.positionCartographic;
+        const currentAlt = carto ? carto.height : 50000;
 
-    // STAGE 4 Inspection Position: 250-500m altitude (~300m), oblique pitch -45°
-    const stage4Pos = computeStagePos(260, 300);
+        if (currentAlt < 2000) {
+          // Already in local area, fly directly to final site inspection (STAGE 4)
+          await flyStage(finalPos, headingRad, pitchRad, 1.4, 'STAGE 4 — INCIDENT INSPECTION', Cesium.EasingFunction.QUADRATIC_OUT);
+        } else {
+          // STAGE 1 — REGIONAL OVERVIEW (~25-35 km altitude)
+          const stage1Pos = getStagePos(12000, 28000);
+          let ok = await flyStage(stage1Pos, headingRad, Cesium.Math.toRadians(-55), 1.4, 'STAGE 1 — REGIONAL CONTEXT', Cesium.EasingFunction.QUADRATIC_IN_OUT);
+          if (!ok || flightIdRef.current !== currentFlightId) {
+            // Guard against camera remaining at 24 km: force final site inspection destination!
+            v.camera.flyTo({ destination: finalPos, orientation: { heading: headingRad, pitch: pitchRad, roll: 0.0 }, duration: 1.0 });
+            return;
+          }
 
-    // Check distance to incident from current camera position
-    const currentPos = v.camera.position;
-    const distToTarget = Cesium.Cartesian3.distance(currentPos, targetPos);
+          // STAGE 2 — AREA APPROACH (~8-10 km altitude)
+          const stage2Pos = getStagePos(5500, 8000);
+          ok = await flyStage(stage2Pos, headingRad, Cesium.Math.toRadians(-48), 1.3, 'STAGE 2 — AREA APPROACH', Cesium.EasingFunction.QUADRATIC_IN_OUT);
+          if (!ok || flightIdRef.current !== currentFlightId) {
+            v.camera.flyTo({ destination: finalPos, orientation: { heading: headingRad, pitch: pitchRad, roll: 0.0 }, duration: 1.0 });
+            return;
+          }
 
-    // If already in low-altitude vicinity (< 1200m) and not forced full flight, fly direct to Stage 4
-    if (distToTarget < 1200 && !options.forceFullFlight) {
-      setIsFlying(true);
-      setFlightStage('STAGE 4 — INCIDENT INSPECTION');
+          // STAGE 3 — LOW-ALTITUDE APPROACH (1-3 km altitude, ~1800m reference)
+          const stage3Pos = getStagePos(1600, 1800);
+          ok = await flyStage(stage3Pos, headingRad, Cesium.Math.toRadians(-40), 1.2, 'STAGE 3 — FACILITY APPROACH', Cesium.EasingFunction.QUADRATIC_IN_OUT);
+          if (!ok || flightIdRef.current !== currentFlightId) {
+            v.camera.flyTo({ destination: finalPos, orientation: { heading: headingRad, pitch: pitchRad, roll: 0.0 }, duration: 1.0 });
+            return;
+          }
 
-      v.camera.flyTo({
-        destination: stage4Pos,
-        orientation: {
-          heading: headingRad,
-          pitch: Cesium.Math.toRadians(-45), // Oblique inspection pitch (-35° to -60°) looking across terrain & structures
-          roll: 0.0
-        },
-        duration: 1.4,
-        easingFunction: Cesium.EasingFunction.QUADRATIC_OUT,
-        complete: () => {
-          if (flightIdRef.current !== currentFlightId) return;
-          isInspectingRef.current = true;
-          setIsFlying(false);
-          setFlightStage('INSPECTION READY');
-          syncTelemetryWithEvent(lat, lon);
+          // STAGE 4 — FINAL SITE-LEVEL OBLIQUE INSPECTION (250-500m altitude, ~350m)
+          await flyStage(finalPos, headingRad, pitchRad, 1.4, 'STAGE 4 — INCIDENT INSPECTION', Cesium.EasingFunction.QUADRATIC_OUT);
         }
-      });
-      return;
+      }
+    } finally {
+      if (flightIdRef.current === currentFlightId) {
+        isInspectingRef.current = true;
+        setIsFlying(false);
+        setFlightStage('INSPECTION READY');
+        syncTelemetryWithEvent(lat, lon);
+      }
     }
-
-    // CONTINUOUS 4-STAGE CINEMATIC FLIGHT — MAP REMAINS 100% VISIBLE
-    // Benchmark references: 1600 site inspection baseline / -35 oblique reference
-    (async () => {
-      setIsFlying(true);
-
-      // STAGE 1 — REGIONAL CONTEXT (India / Regional Overview, Altitude: ~24km, Pitch: -55°, Duration: 1.6s)
-      setFlightStage('STAGE 1 — REGIONAL CONTEXT');
-      const stage1Pos = computeStagePos(12000, 24000);
-      let ok = await flyStage(stage1Pos, headingRad, Cesium.Math.toRadians(-55), 1.6, Cesium.EasingFunction.QUADRATIC_IN_OUT);
-      if (!ok || flightIdRef.current !== currentFlightId) return;
-
-      // STAGE 2 — APPROACH TO TARGET (Fly toward event, Altitude: ~5km, Pitch: -48°, Duration: 1.5s)
-      setFlightStage('STAGE 2 — AREA APPROACH');
-      const stage2Pos = computeStagePos(4000, 5000);
-      ok = await flyStage(stage2Pos, headingRad, Cesium.Math.toRadians(-48), 1.5, Cesium.EasingFunction.QUADRATIC_IN_OUT);
-      if (!ok || flightIdRef.current !== currentFlightId) return;
-
-      // STAGE 3 — LOW-ALTITUDE APPROACH (1-3km altitude, Altitude: ~1.8km, Pitch: -45°, Duration: 1.4s)
-      setFlightStage('STAGE 3 — FACILITY APPROACH');
-      const stage3Pos = computeStagePos(1500, 1800);
-      ok = await flyStage(stage3Pos, headingRad, Cesium.Math.toRadians(-45), 1.4, Cesium.EasingFunction.QUADRATIC_IN_OUT);
-      if (!ok || flightIdRef.current !== currentFlightId) return;
-
-      // STAGE 4 — INCIDENT INSPECTION (250-500m, Altitude: ~300m, Pitch: -45°, Duration: 1.5s)
-      setFlightStage('STAGE 4 — INCIDENT INSPECTION');
-      ok = await flyStage(stage4Pos, headingRad, Cesium.Math.toRadians(-45), 1.5, Cesium.EasingFunction.QUADRATIC_OUT);
-      if (!ok || flightIdRef.current !== currentFlightId) return;
-
-      isInspectingRef.current = true;
-      setIsFlying(false);
-      setFlightStage('INSPECTION READY');
-      syncTelemetryWithEvent(lat, lon);
-    })();
-  }, [viewer, calculateInspectionHeading, syncTelemetryWithEvent]);
+  }, [viewer, calculateInspectionCamera, syncTelemetryWithEvent]);
 
   // Backward-compatible alias for existing test suites
   const flyToSelectedEvent = useCallback((fire, duration = 1.8) => {
-    flyToIncident(fire);
+    flyToIncident(fire, { duration });
+  }, [flyToIncident]);
+
+  const inspectEvent = useCallback((fire, options = {}) => {
+    flyToIncident(fire, options);
   }, [flyToIncident]);
 
   // Helper: Find camera focal point on terrain or globe ellipsoid
@@ -360,70 +402,8 @@ export default function Cesium3DViewer({
       });
     } else {
       const height = v.camera.positionCartographic?.height || 2000;
-      const step = Math.max(200, height * 0.40);
+      const step = Math.max(120, height * 0.40);
       v.camera.zoomOut(step);
-    }
-  };
-
-  const handleRecenterIncident = () => {
-    if (selectedFire) {
-      flyToIncident(selectedFire);
-      setActiveCard({ type: 'thermal', data: selectedFire });
-    }
-  };
-
-  const handleResetHome = () => {
-    const v = viewerRef.current || viewer;
-    if (!v) return;
-    isInspectingRef.current = false;
-
-    if (selectedFire) {
-      const lat = Number(selectedFire.latitude);
-      const lon = Number(selectedFire.longitude);
-      v.camera.cancelFlight();
-      v.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.15, 24000), // Regional View (~24km)
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-50),
-          roll: 0.0
-        },
-        duration: 1.8,
-        easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT
-      });
-    } else {
-      v.camera.cancelFlight();
-      v.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(78.9629, 21.5, 3800000),
-        duration: 1.8
-      });
-    }
-  };
-
-  const handleResetNorth = () => {
-    const v = viewerRef.current || viewer;
-    if (!v) return;
-    isInspectingRef.current = false;
-
-    const target = getCameraTarget(v);
-    if (target) {
-      const currentRange = Cesium.Cartesian3.distance(v.camera.position, target);
-      v.camera.cancelFlight();
-      v.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 0), {
-        offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(0), v.camera.pitch, currentRange),
-        duration: 0.5
-      });
-    } else {
-      const camera = v.camera;
-      camera.flyTo({
-        destination: camera.position,
-        orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: camera.pitch,
-          roll: 0.0
-        },
-        duration: 0.5
-      });
     }
   };
 
@@ -432,46 +412,100 @@ export default function Cesium3DViewer({
     if (!v) return;
     isInspectingRef.current = false;
 
-    const height = v.camera.positionCartographic?.height || 1500;
-    const dist = Math.max(80, height * 0.20);
-    if (direction === 'north') v.camera.move(v.camera.up, dist);
-    if (direction === 'south') v.camera.move(v.camera.up, -dist);
-    if (direction === 'east') v.camera.move(v.camera.right, dist);
-    if (direction === 'west') v.camera.move(v.camera.right, -dist);
+    const height = v.camera.positionCartographic?.height || 2000;
+    const moveAmount = Math.max(50, height * 0.15);
+
+    switch (direction) {
+      case 'north': v.camera.moveUp(moveAmount); break;
+      case 'south': v.camera.moveDown(moveAmount); break;
+      case 'east': v.camera.moveRight(moveAmount); break;
+      case 'west': v.camera.moveLeft(moveAmount); break;
+      default: break;
+    }
   };
 
-  const handleOrbit = (direction) => {
+  const handleRotate = (degrees) => {
     const v = viewerRef.current || viewer;
     if (!v) return;
-    isInspectingRef.current = false;
-
     const target = getCameraTarget(v);
+    const rad = Cesium.Math.toRadians(degrees);
+
     if (target) {
       const currentRange = Cesium.Cartesian3.distance(v.camera.position, target);
-      const angle = Cesium.Math.toRadians(direction === 'left' ? -20 : 20);
-      const newHeading = Cesium.Math.zeroToTwoPi(v.camera.heading + angle);
-
       v.camera.cancelFlight();
       v.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 0), {
-        offset: new Cesium.HeadingPitchRange(newHeading, v.camera.pitch, currentRange),
+        offset: new Cesium.HeadingPitchRange(
+          Cesium.Math.zeroToTwoPi(v.camera.heading + rad),
+          v.camera.pitch,
+          currentRange
+        ),
         duration: 0.35
       });
     } else {
-      const angle = Cesium.Math.toRadians(15);
-      if (direction === 'left') v.camera.rotateLeft(angle);
-      else v.camera.rotateRight(angle);
+      v.camera.rotate(Cesium.Cartesian3.UNIT_Z, rad);
+    }
+  };
+
+  const handleResetHome = () => {
+    const v = viewerRef.current || viewer;
+    if (!v) return;
+    isInspectingRef.current = false;
+    v.camera.cancelFlight();
+    setFlightStage('REGIONAL OVERVIEW');
+    // Regional India overview
+    v.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(78.5, 21.5, 3200000),
+      orientation: {
+        heading: Cesium.Math.toRadians(0),
+        pitch: Cesium.Math.toRadians(-82),
+        roll: 0.0
+      },
+      duration: 1.8,
+      easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+      complete: () => {
+        setCameraTelemetry(prev => ({ ...prev, altitude: 3200000, pitch: -82 }));
+      }
+    });
+  };
+
+  const handleRecenterIncident = () => {
+    const fire = selectedFireRef.current || selectedFire;
+    if (fire) {
+      flyToIncident(fire);
+    } else {
+      handleResetHome();
+    }
+  };
+
+  const handleResetNorth = () => {
+    const v = viewerRef.current || viewer;
+    if (!v) return;
+    const target = getCameraTarget(v);
+    if (target) {
+      const currentRange = Cesium.Cartesian3.distance(v.camera.position, target);
+      v.camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 0), {
+        offset: new Cesium.HeadingPitchRange(0.0, v.camera.pitch, currentRange),
+        duration: 0.5
+      });
+    } else {
+      v.camera.setView({
+        orientation: {
+          heading: 0.0,
+          pitch: v.camera.pitch,
+          roll: 0.0
+        }
+      });
     }
   };
 
   const handleTilt = (direction) => {
     const v = viewerRef.current || viewer;
     if (!v) return;
-    isInspectingRef.current = false;
-
     const target = getCameraTarget(v);
+    const delta = Cesium.Math.toRadians(direction === 'up' ? 8 : -8);
+
     if (target) {
       const currentRange = Cesium.Cartesian3.distance(v.camera.position, target);
-      const delta = Cesium.Math.toRadians(direction === 'up' ? 8 : -8);
       const newPitch = Math.max(
         Cesium.Math.toRadians(-88),
         Math.min(Cesium.Math.toRadians(-12), v.camera.pitch + delta)
@@ -489,7 +523,9 @@ export default function Cesium3DViewer({
     }
   };
 
-  // Initialize CesiumJS Viewer (Single Lifecycle - Initialized ONCE)
+
+
+  // Initialize CesiumJS Viewer (Task 1, 2, 3, 4, 12)
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -497,13 +533,13 @@ export default function Cesium3DViewer({
 
     const initCesium = async () => {
       try {
-        // Configure Cesium Ion Token if provided (Section 13)
+        // Task 1: Configure Cesium Ion Token
         const ionToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
         if (ionToken && typeof ionToken === 'string' && ionToken.trim()) {
           Cesium.Ion.defaultAccessToken = ionToken.trim();
         }
 
-        // Setup Esri World Imagery (high-resolution authentic satellite base layer)
+        // Task 4: Setup Esri World Imagery (high-resolution authentic satellite base layer)
         let baseLayer;
         try {
           const esriProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
@@ -546,26 +582,28 @@ export default function Cesium3DViewer({
           }
         });
 
-        // Hide default Cesium credit banner container to avoid token warning overlays
+        // Ensure globe is always shown with satellite imagery
+        viewerInstance.scene.globe.show = true;
+
+        // Hide default Cesium credit overlay container to avoid obstructing map
         if (viewerInstance.creditDisplay?.container) {
           viewerInstance.creditDisplay.container.style.display = 'none';
         }
 
-        // Enable full native 3D camera controller with anti-underground collision detection
+        // Camera controller settings
         const controller = viewerInstance.scene.screenSpaceCameraController;
         controller.enableRotate = true;
         controller.enableTranslate = true;
         controller.enableZoom = true;
         controller.enableTilt = true;
         controller.enableLook = true;
-        controller.enableCollisionDetection = true; // Prevents camera sinking underground (Section 22)
-        controller.minimumZoomDistance = 35.0; // Respect terrain & structures surface
+        controller.enableCollisionDetection = true; // Prevents camera sinking underground
+        controller.minimumZoomDistance = 35.0;
         controller.maximumZoomDistance = 30000000.0;
         controller.inertiaSpin = 0.85;
         controller.inertiaTranslate = 0.85;
         controller.inertiaZoom = 0.80;
 
-        // Depth testing & atmospheric settings
         viewerInstance.scene.globe.depthTestAgainstTerrain = false;
         viewerInstance.scene.globe.enableLighting = false;
 
@@ -588,25 +626,40 @@ export default function Cesium3DViewer({
         window.__viewer = viewerInstance;
         window.__Cesium = Cesium;
 
-        // Set initial camera view to regional context (Sections 3 & 9)
+        // Task 6: Initial camera view directly set to site-level inspection (250-500m)
         if (selectedFireRef.current) {
-          const sFire = selectedFireRef.current;
-          const sLat = Number(sFire.latitude);
-          const sLon = Number(sFire.longitude);
-          if (!isNaN(sLat) && !isNaN(sLon)) {
-            viewerInstance.camera.setView({
-              destination: Cesium.Cartesian3.fromDegrees(sLon, sLat - 0.15, 24000),
-              orientation: {
-                heading: Cesium.Math.toRadians(0),
-                pitch: Cesium.Math.toRadians(-50),
-                roll: 0.0
-              }
-            });
-            setActiveCard({ type: 'thermal', data: sFire });
+          const lat = Number(selectedFireRef.current.latitude);
+          const lon = Number(selectedFireRef.current.longitude);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            const camConfig = calculateInspectionCamera(selectedFireRef.current);
+            if (camConfig) {
+              viewerInstance.camera.setView({
+                destination: camConfig.destPos,
+                orientation: {
+                  heading: camConfig.headingRad,
+                  pitch: camConfig.pitchRad,
+                  roll: 0.0
+                }
+              });
+              isInspectingRef.current = true;
+              targetLatRef.current = lat;
+              targetLonRef.current = lon;
+              syncTelemetryWithEvent(lat, lon);
+            }
           }
+          setActiveCard({ type: 'thermal', data: selectedFireRef.current });
+        } else {
+          viewerInstance.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(78.5, 21.5, 3200000),
+            orientation: {
+              heading: Cesium.Math.toRadians(0),
+              pitch: Cesium.Math.toRadians(-82),
+              roll: 0.0
+            }
+          });
         }
 
-        // Camera changed telemetry tracking with exact FIRMS lock synchronization (Section 5)
+        // Camera telemetry listener
         const updateTelemetry = () => {
           if (!viewerInstance || viewerInstance.isDestroyed()) return;
           try {
@@ -620,11 +673,9 @@ export default function Cesium3DViewer({
             let targetLon = null;
 
             if (isInspectingRef.current && targetLatRef.current != null && targetLonRef.current != null) {
-              // Exact FIRMS coordinate lock
               targetLat = targetLatRef.current;
               targetLon = targetLonRef.current;
             } else {
-              // Free camera exploration raycast pick
               const canvas = viewerInstance.canvas;
               const centerPoint = new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2);
               const ray = camera.getPickRay(centerPoint);
@@ -646,15 +697,13 @@ export default function Cesium3DViewer({
               pitch,
               heading
             });
-          } catch (e) {
-            // Ignore telemetry frame error
-          }
+          } catch (e) {}
         };
 
         const removeListener = viewerInstance.camera.changed.addEventListener(updateTelemetry);
         cameraListenerRef.current = removeListener;
 
-        // Setup ScreenSpaceEventHandler for interactive entity picking
+        // ScreenSpaceEventHandler for interactive entity picking
         const handler = new Cesium.ScreenSpaceEventHandler(viewerInstance.scene.canvas);
         handler.setInputAction((click) => {
           const picked = viewerInstance.scene.pick(click.position);
@@ -663,7 +712,9 @@ export default function Cesium3DViewer({
             const agniType = entity._agniType || (entity.cylinder || entity.point || entity.label || entity.polyline ? 'thermal' : null);
             const agniData = entity._agniData || selectedFireRef.current;
             if (agniType) {
-              console.log('[AGNIDRISHTI 3D] Picked 3D entity:', agniType, agniData);
+              if (agniType === 'thermal' && agniData && onSelectFire) {
+                onSelectFire(agniData);
+              }
               setActiveCard({ type: agniType, data: agniData });
               return;
             }
@@ -671,36 +722,43 @@ export default function Cesium3DViewer({
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
         // Reset inspection lock on user manual mouse drag
-        handler.setInputAction(() => {
-          isInspectingRef.current = false;
-        }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
-        handler.setInputAction(() => {
-          isInspectingRef.current = false;
-        }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
-        handler.setInputAction(() => {
-          isInspectingRef.current = false;
-        }, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
+        handler.setInputAction(() => { isInspectingRef.current = false; }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+        handler.setInputAction(() => { isInspectingRef.current = false; }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
+        handler.setInputAction(() => { isInspectingRef.current = false; }, Cesium.ScreenSpaceEventType.MIDDLE_DOWN);
 
         screenHandlerRef.current = handler;
         setViewer(viewerInstance);
 
-        // Asynchronously stream Cesium World Terrain and OSM Buildings (Sections 1, 2, 11)
+        // Task 2, 3 & 14: Asynchronously stream Cesium World Terrain & OSM Buildings
         (async () => {
-          let loadedTileset = null;
           let terrainLoaded = false;
           let buildingsLoaded = false;
 
-          const hasIonToken = Boolean(ionToken && typeof ionToken === 'string' && ionToken.trim().length > 5);
-
-          if (!hasIonToken) {
-            console.warn('[AGNIDRISHTI 3D] VITE_CESIUM_ION_TOKEN missing or empty: 3D DATA UNAVAILABLE');
-            terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
-            setTilesetMode('imagery_only');
-            setTilesetStatusText('3D DATA UNAVAILABLE');
-            return;
+          // 1. Task 2: Cesium World Terrain
+          if (viewerInstance && !viewerInstance.isDestroyed()) {
+            try {
+              const terrain = await Cesium.createWorldTerrainAsync({
+                requestWaterMask: true,
+                requestVertexNormals: true
+              });
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                viewerInstance.terrainProvider = terrain;
+                terrainProviderRef.current = terrain;
+                viewerInstance.scene.globe.depthTestAgainstTerrain = true;
+                terrainLoaded = true;
+                console.log('[AGNIDRISHTI 3D] Cesium World Terrain successfully loaded.');
+              }
+            } catch (terrainErr) {
+              console.warn('[AGNIDRISHTI 3D] Cesium World Terrain load notice, fallback to Ellipsoid:', terrainErr);
+              if (viewerInstance && !viewerInstance.isDestroyed()) {
+                terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
+                viewerInstance.terrainProvider = terrainProviderRef.current;
+                viewerInstance.scene.globe.depthTestAgainstTerrain = false;
+              }
+            }
           }
 
-          // Primary 3D Buildings: Cesium OSM Buildings (Section 2)
+          // 2. Task 3: Cesium OSM Buildings
           if (viewerInstance && !viewerInstance.isDestroyed()) {
             try {
               const osmBuildings = await Cesium.createOsmBuildingsAsync({
@@ -708,101 +766,64 @@ export default function Cesium3DViewer({
               });
               if (viewerInstance && !viewerInstance.isDestroyed()) {
                 viewerInstance.scene.primitives.add(osmBuildings);
-                loadedTileset = osmBuildings;
+                osmBuildingsRef.current = osmBuildings;
                 buildingsLoaded = true;
-                console.log('[AGNIDRISHTI 3D] OSM Buildings tileset successfully loaded into scene.');
+                console.log('[AGNIDRISHTI 3D] Cesium OSM Buildings successfully loaded.');
               }
             } catch (osmErr) {
-              console.error('[AGNIDRISHTI 3D] Cesium Ion OSM Buildings load error (check VITE_CESIUM_ION_TOKEN):', osmErr);
+              console.warn('[AGNIDRISHTI 3D] Cesium OSM Buildings load notice:', osmErr);
             }
           }
 
-          if (loadedTileset) {
-            try {
-              loadedTileset.preloadFlightDestinations = true;
-            } catch (e) {
-              // ignore
-            }
-          }
-
-          tilesetRef.current = loadedTileset;
-
-          // World Terrain loading (Section 1)
-          if (viewerInstance && !viewerInstance.isDestroyed()) {
-            try {
-              const terrain = await Cesium.createWorldTerrainAsync();
-              if (viewerInstance && !viewerInstance.isDestroyed()) {
-                viewerInstance.terrainProvider = terrain;
-                terrainProviderRef.current = terrain;
-                terrainLoaded = true;
-                console.log('[AGNIDRISHTI 3D] Cesium World Terrain successfully loaded.');
-              }
-            } catch (terrainErr) {
-              console.error('[AGNIDRISHTI 3D] Cesium World Terrain load error (check VITE_CESIUM_ION_TOKEN):', terrainErr);
-              if (viewerInstance && !viewerInstance.isDestroyed()) {
-                terrainProviderRef.current = new Cesium.EllipsoidTerrainProvider();
-                viewerInstance.terrainProvider = terrainProviderRef.current;
-              }
-            }
-          }
-
-          // Compute truthful Section 11 status:
-          // 3D DATA: ✓ TERRAIN + BUILDINGS
-          // 3D DATA: ✓ TERRAIN
-          // 3D DATA: 3D DATA UNAVAILABLE
-          let finalStatus = '3D DATA UNAVAILABLE';
-          let mode = 'imagery_only';
-
+          // Task 14: Truthful Status reporting
           if (terrainLoaded && buildingsLoaded) {
-            finalStatus = '✓ TERRAIN + BUILDINGS';
-            mode = 'osm_buildings';
+            setTilesetStatusText('WORLD TERRAIN + OSM BUILDINGS');
+            setTilesetMode('cesium_native');
           } else if (terrainLoaded) {
-            finalStatus = '✓ TERRAIN';
-            mode = 'terrain_imagery';
+            setTilesetStatusText('CESIUM WORLD TERRAIN');
+            setTilesetMode('cesium_native');
           } else if (buildingsLoaded) {
-            finalStatus = '✓ BUILDINGS';
-            mode = 'osm_buildings';
+            setTilesetStatusText('OSM BUILDINGS (3D TERRAIN UNAVAILABLE)');
+            setTilesetMode('cesium_native');
           } else {
-            finalStatus = '3D DATA UNAVAILABLE';
-            mode = 'imagery_only';
-          }
-
-          setTilesetMode(mode);
-          setTilesetStatusText(finalStatus);
-
-          // Optional OpenStreetMap road overlay layer
-          if (viewerInstance && !viewerInstance.isDestroyed()) {
-            try {
-              const roadProvider = new Cesium.UrlTemplateImageryProvider({
-                url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c']
-              });
-              const roadLayer = new Cesium.ImageryLayer(roadProvider, { alpha: 0.65, show: false });
-              viewerInstance.imageryLayers.add(roadLayer);
-              roadLayerRef.current = roadLayer;
-            } catch (e) {
-              // ignore
-            }
+            // Explicit Task 14 requirement: show "3D Terrain unavailable" if terrain fails
+            setTilesetStatusText('3D Terrain unavailable');
+            setTilesetMode('imagery_only');
           }
         })();
 
+        // Optional OpenStreetMap road overlay
+        if (viewerInstance && !viewerInstance.isDestroyed()) {
+          try {
+            const roadProvider = new Cesium.UrlTemplateImageryProvider({
+              url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              subdomains: ['a', 'b', 'c']
+            });
+            const roadLayer = new Cesium.ImageryLayer(roadProvider, { alpha: 0.65, show: false });
+            viewerInstance.imageryLayers.add(roadLayer);
+            roadLayerRef.current = roadLayer;
+          } catch (e) {}
+        }
       } catch (err) {
         console.error('[AGNIDRISHTI 3D] Cesium initialization error:', err);
-        setInitError(err.message || 'Unable to initialize 3D WebGL context.');
+        setInitError(err.message || 'WebGL initialization failure');
       }
     };
 
     initCesium();
 
+    // Task 12: Clean up single viewer lifecycle strictly on unmount
     return () => {
-      if (cameraListenerRef.current) {
-        cameraListenerRef.current();
-        cameraListenerRef.current = null;
-      }
       if (screenHandlerRef.current && !screenHandlerRef.current.isDestroyed()) {
-        screenHandlerRef.current.destroy();
-        screenHandlerRef.current = null;
+        try { screenHandlerRef.current.destroy(); } catch (e) {}
       }
+      screenHandlerRef.current = null;
+
+      if (cameraListenerRef.current) {
+        try { cameraListenerRef.current(); } catch (e) {}
+      }
+      cameraListenerRef.current = null;
+
       if (viewerInstance && !viewerInstance.isDestroyed()) {
         try {
           viewerInstance.destroy();
@@ -817,8 +838,8 @@ export default function Cesium3DViewer({
 
   // Update 3D Buildings visibility
   useEffect(() => {
-    if (tilesetRef.current) {
-      tilesetRef.current.show = showBuildings;
+    if (osmBuildingsRef.current) {
+      osmBuildingsRef.current.show = showBuildings;
     }
   }, [showBuildings]);
 
@@ -828,8 +849,10 @@ export default function Cesium3DViewer({
     if (!v) return;
     if (showTerrain && terrainProviderRef.current) {
       v.terrainProvider = terrainProviderRef.current;
+      v.scene.globe.depthTestAgainstTerrain = true;
     } else {
       v.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+      v.scene.globe.depthTestAgainstTerrain = false;
     }
   }, [showTerrain, viewer]);
 
@@ -907,7 +930,7 @@ export default function Cesium3DViewer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewer, selectedFire]);
 
-  // Trigger cinematic approach flight on selectedFire change or locateTrigger (Section 3)
+  // Trigger camera flight on selectedFire change or locateTrigger
   useEffect(() => {
     if (!viewer || !selectedFire) return;
 
@@ -924,15 +947,47 @@ export default function Cesium3DViewer({
     setActiveCard({ type: 'thermal', data: selectedFire });
   }, [viewer, selectedFire, locateTrigger, flyToIncident]);
 
-  // Exact FIRMS Incident Marker: Created IMMEDIATELY on selection (Sections 7 & 8)
+  // Task 5 & 7: Render Exact NASA FIRMS Thermal Incident Marker
   useEffect(() => {
     const ds = thermalDataSourceRef.current;
     if (!ds) return;
     ds.entities.removeAll();
 
-    if (!selectedFire || !showThermal) return;
+    if (!showThermal) return;
 
-    // Authoritative FIRMS coordinates — Single source of truth (Section 7)
+    const currentSelectedId = selectedFire?.fire_id || selectedFire?.event_id;
+
+    // Render subtle background markers for other active events
+    (fires || []).forEach((fire) => {
+      const fId = fire.fire_id || fire.event_id;
+      if (currentSelectedId && fId === currentSelectedId) return;
+
+      const fLat = Number(fire.latitude);
+      const fLon = Number(fire.longitude);
+      if (isNaN(fLat) || isNaN(fLon)) return;
+
+      const isCritical = Boolean(fire.is_emergency || fire.threat_level === 'CRITICAL' || fire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY');
+      const isFlare = fire.category === 'PERSISTENT_INDUSTRIAL_FLARE';
+      const color = getClassificationColor(fire);
+
+      const subtleMarker = ds.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(fLon, fLat),
+        point: {
+          pixelSize: isCritical ? 9 : (isFlare ? 7 : 6),
+          color: color,
+          outlineColor: Cesium.Color.WHITE.withAlpha(isCritical ? 0.95 : 0.7),
+          outlineWidth: isCritical ? 2.0 : 1.2,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        }
+      });
+      subtleMarker._agniType = 'thermal';
+      subtleMarker._agniData = fire;
+    });
+
+    if (!selectedFire) return;
+
+    // Task 5: Exact FIRMS Observation Coordinate
     const lat = Number(selectedFire.latitude);
     const lon = Number(selectedFire.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
@@ -941,15 +996,13 @@ export default function Cesium3DViewer({
     const isCritical = Boolean(selectedFire.is_emergency || selectedFire.threat_level === 'CRITICAL' || selectedFire.category === 'CRITICAL_INDUSTRIAL_EMERGENCY');
     const isFlare = selectedFire.category === 'PERSISTENT_INDUSTRIAL_FLARE';
 
-    // Dynamic severity-aware scaling (Section 8)
-    const beaconHeight = Math.min(350, Math.max(160, 160 + (frp / 250) * 140));
-    const groundRadius = Math.min(45, Math.max(18, 18 + (frp / 200) * 20));
-    const glowPower = isCritical ? 0.42 : (isFlare ? 0.32 : 0.25);
-
+    // Task 7: Severity-scaled visual intensity, not a giant distracting circle
+    const beaconHeight = Math.min(100, Math.max(60, 60 + (frp / 250) * 30));
+    const groundRadius = Math.min(18, Math.max(10, 10 + (frp / 200) * 6));
+    const glowPower = isCritical ? 0.35 : (isFlare ? 0.28 : 0.22);
     const color = getClassificationColor(selectedFire);
     const colorHex = isCritical ? '#EF4444' : (isFlare ? '#F59E0B' : '#EF4444');
 
-    // Surface elevation information
     const v = viewerRef.current || viewer;
     let groundHeight = 0;
     if (v?.scene?.globe) {
@@ -960,15 +1013,13 @@ export default function Cesium3DViewer({
 
     const posGround = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight);
     const posBeaconTop = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + beaconHeight);
-    const posNode1 = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + beaconHeight * 0.33);
-    const posNode2 = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + beaconHeight * 0.66);
-    const posCore = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + 12);
+    const posCore = Cesium.Cartesian3.fromDegrees(lon, lat, groundHeight + 2.0);
 
-    // 1. Vertical Incident Beacon (Rising from FIRMS observation coordinate to sky - Section 8)
+    // 1. Vertical Incident Beacon (Rising from FIRMS observation coordinate to sky)
     const locatorBeam = ds.entities.add({
       polyline: {
         positions: [posGround, posBeaconTop],
-        width: isCritical ? 5.5 : 4.0,
+        width: isCritical ? 4.0 : 3.0,
         material: new Cesium.PolylineGlowMaterialProperty({
           glowPower: glowPower,
           color: color.withAlpha(0.95)
@@ -978,37 +1029,21 @@ export default function Cesium3DViewer({
     locatorBeam._agniType = 'thermal';
     locatorBeam._agniData = selectedFire;
 
-    // 2. Intermediate Beacon Nodes (Severity-aware vertical node stack)
-    [posNode1, posNode2].forEach((nodePos) => {
-      const nodeEntity = ds.entities.add({
-        position: nodePos,
-        point: {
-          pixelSize: isCritical ? 9 : 7,
-          color: color,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 2.0,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY
-        }
-      });
-      nodeEntity._agniType = 'thermal';
-      nodeEntity._agniData = selectedFire;
-    });
-
-    // 3. Top Locator Beacon Node
+    // 2. Top Beacon Node
     const topBeacon = ds.entities.add({
       position: posBeaconTop,
       point: {
-        pixelSize: isCritical ? 11 : 8,
+        pixelSize: isCritical ? 8 : 6,
         color: Cesium.Color.WHITE,
         outlineColor: color,
-        outlineWidth: 2.8,
+        outlineWidth: 2.0,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
     });
     topBeacon._agniType = 'thermal';
     topBeacon._agniData = selectedFire;
 
-    // 4. Ground Target Ring (Subtle circular ground ring centered exactly on FIRMS coordinate - Section 8)
+    // 3. Ground Target Ring (Subtle ring centered on FIRMS coordinate)
     const groundRing = ds.entities.add({
       position: posGround,
       ellipse: {
@@ -1017,21 +1052,21 @@ export default function Cesium3DViewer({
         material: color.withAlpha(0.18),
         outline: true,
         outlineColor: Cesium.Color.WHITE.withAlpha(0.85),
-        outlineWidth: 2.0,
+        outlineWidth: 1.8,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
       }
     });
     groundRing._agniType = 'thermal';
     groundRing._agniData = selectedFire;
 
-    // 5. Thermal Core Hotspot Point
+    // 4. Thermal Core Hotspot Point
     const thermalCore = ds.entities.add({
       position: posCore,
       point: {
-        pixelSize: isCritical ? 15 : 12,
+        pixelSize: isCritical ? 10 : 8,
         color: Cesium.Color.fromCssColorString(colorHex),
         outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 3.0,
+        outlineWidth: 2.0,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       }
@@ -1039,33 +1074,29 @@ export default function Cesium3DViewer({
     thermalCore._agniType = 'thermal';
     thermalCore._agniData = selectedFire;
 
-    // 6. Scientific Incident Information Badge (Floating cleanly above thermal point - Section 7)
+    // 5. Scientific Incident Information Badge
     const eventId = selectedFire.event_id || selectedFire.fire_id || 'AGNI-OBSERVATION';
     const frpVal = Number(selectedFire.frp || 0).toFixed(1);
-    const satVal = selectedFire.satellites_display || selectedFire.satellite || 'NOAA-21 / VIIRS';
+    const satVal = selectedFire.satellites_display || selectedFire.satellite || 'VIIRS NOAA-21';
     const cleanTime = selectedFire.acq_time ? String(selectedFire.acq_time).padStart(4, '0') : '1200';
     const timeVal = `${cleanTime.substring(0, 2)}:${cleanTime.substring(2, 4)} UTC`;
-    const latStr = `${lat >= 0 ? lat.toFixed(6) + '° N' : Math.abs(lat).toFixed(6) + '° S'}`;
-    const lonStr = `${lon >= 0 ? lon.toFixed(6) + '° E' : Math.abs(lon).toFixed(6) + '° W'}`;
+    const latStr = `${lat >= 0 ? lat.toFixed(5) + '° N' : Math.abs(lat).toFixed(5) + '° S'}`;
+    const lonStr = `${lon >= 0 ? lon.toFixed(5) + '° E' : Math.abs(lon).toFixed(5) + '° W'}`;
 
-    let facContext = 'FACILITY CONTEXT: NOT VERIFIED';
-    if (selectedFire.facility_name && selectedFire.facility_name !== 'None' && selectedFire.facility_name !== 'null') {
-      facContext = `OSM CONTEXT: ${selectedFire.facility_name}`;
-    }
-
-    const labelText = `FIRMS Observation Coordinate (WGS84)\nEXACT FIRMS OBSERVATION\nEVENT: ${eventId}  |  FRP: ${frpVal} MW\nOBSERVED: ${timeVal}  |  SATELLITE: ${satVal}\n${latStr}, ${lonStr}\n${facContext}\n      │\n      ▼\n● THERMAL OBSERVATION POINT`;
+    // Task 5 Requirement: Label as "FIRMS Observation Coordinate" (not physical ignition point)
+    const labelText = `EXACT FIRMS OBSERVATION\nFIRMS Observation Coordinate (INCIDENT TARGET)\nEVENT: ${eventId}  |  FIRE RADIATIVE POWER: ${frpVal} MW\nOBSERVED: ${timeVal}  |  SENSOR: ${satVal}\n${latStr}, ${lonStr}\nSatellite infrared thermal detection point`;
 
     const eventLabel = ds.entities.add({
       position: posGround,
       label: {
         text: labelText,
-        font: 'bold 11px "JetBrains Mono", monospace',
+        font: 'bold 10.5px "JetBrains Mono", monospace',
         fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 3,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -64),
+        pixelOffset: new Cesium.Cartesian2(0, -45),
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         scaleByDistance: new Cesium.NearFarScalar(250, 1.0, 35000, 0.72),
@@ -1078,7 +1109,7 @@ export default function Cesium3DViewer({
     eventLabel._agniData = selectedFire;
   }, [viewer, selectedFire, showThermal]);
 
-  // Real OSM Facility Polygon & Footprint Overlay (Sections 9 & 10)
+  // Task 8: Facility Footprint Overlay (Only from real matched facility geometry)
   useEffect(() => {
     const ds = facilityDataSourceRef.current;
     if (!ds) return;
@@ -1086,7 +1117,6 @@ export default function Cesium3DViewer({
 
     if (!showFacility || !facilities?.features || !selectedFire) return;
 
-    // Identify real facility geometry matching selected event
     const matched = facilities.features.find((fac) => {
       const props = fac.properties;
       return (
@@ -1103,7 +1133,7 @@ export default function Cesium3DViewer({
       });
 
       const facEntity = ds.entities.add({
-        name: matched.properties?.name || 'OSM Verified Facility',
+        name: matched.properties?.name || 'Industrial Facility',
         polygon: {
           hierarchy: Cesium.Cartesian3.fromDegreesArray(flatCoords),
           material: Cesium.Color.fromCssColorString('#06B6D4').withAlpha(0.12),
@@ -1116,13 +1146,12 @@ export default function Cesium3DViewer({
       facEntity._agniType = 'facility';
       facEntity._agniData = matched.properties;
 
-      // Facility perimeter label with "OSM VERIFIED" (Section 10)
       const firstCoord = matched.geometry.coordinates[0][0];
       const facLabel = ds.entities.add({
         position: Cesium.Cartesian3.fromDegrees(firstCoord[0], firstCoord[1], 10),
         label: {
-          text: `OSM VERIFIED: ${matched.properties?.name || 'INDUSTRIAL FACILITY'}`,
-          font: 'bold 10.5px "JetBrains Mono", monospace',
+          text: `FACILITY FOOTPRINT: ${matched.properties?.name || 'INDUSTRIAL FACILITY'}`,
+          font: 'bold 10px "JetBrains Mono", monospace',
           fillColor: Cesium.Color.fromCssColorString('#67E8F9'),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2.5,
@@ -1136,108 +1165,131 @@ export default function Cesium3DViewer({
     }
   }, [viewer, facilities, selectedFire, showFacility]);
 
-  // 3D Directional Estimated Dispersion Corridor (Sections 11, 12, 13)
+  // Task 9 & 10: 3D Directional Estimated Dispersion & Wind (Exact backend result)
   useEffect(() => {
     const ds = plumeDataSourceRef.current;
     if (!ds) return;
     ds.entities.removeAll();
 
-    if (!showPlume || !selectedFire) return;
-
-    // Check if real wind data is available from activePlume or selectedFire (Section 11)
-    const hasActivePlumeCoords = Boolean(activePlume?.geometry?.coordinates?.[0]?.length > 2);
-    const hasFireWind = selectedFire.wind_direction_deg != null && !isNaN(Number(selectedFire.wind_direction_deg));
-
-    if (!hasActivePlumeCoords && !hasFireWind) {
-      // Section 12: If wind data is unavailable, do not display a fake plume
-      return;
-    }
+    if (!showPlume || !selectedFire || !activePlume) return;
 
     const lat = Number(selectedFire.latitude);
     const lon = Number(selectedFire.longitude);
     if (isNaN(lat) || isNaN(lon)) return;
 
-    let flatCoords = [];
-    let centerlinePositions = [];
-    let downwindDeg = null;
+    const isDirectional = activePlume.properties?.is_directional !== false;
+    const downwindDeg = activePlume.properties?.downwind_azimuth_deg != null
+      ? Math.round(activePlume.properties.downwind_azimuth_deg)
+      : Math.round((Number(selectedFire.wind_direction_deg || 0) + 180) % 360);
+    const lengthKm = Number(activePlume.properties?.hazard_length_km || selectedFire.hazard_radius_km || 3.5);
 
-    if (hasActivePlumeCoords) {
-      const ring = activePlume.geometry.coordinates[0];
+    // Derive geometry either from backend ring or shared createDownwindDispersionPolygon
+    let flatOuterCoords = [];
+    let flatCoreCoords = [];
+    let centerlinePositions = [];
+    let labelPos = null;
+
+    const ring = activePlume.geometry?.coordinates?.[0];
+    if (ring && ring.length >= 3) {
       ring.forEach(([pLon, pLat]) => {
-        flatCoords.push(pLon, pLat);
+        flatOuterCoords.push(pLon, pLat);
       });
-      downwindDeg = activePlume.properties?.downwind_azimuth_deg != null
-        ? Math.round(activePlume.properties.downwind_azimuth_deg)
-        : Math.round((Number(selectedFire.wind_direction_deg || 0) + 180) % 360);
+      if (activePlume.properties?.inner_corridor?.length >= 3) {
+        activePlume.properties.inner_corridor.forEach(([pLon, pLat]) => {
+          flatCoreCoords.push(pLon, pLat);
+        });
+      }
       if (activePlume.properties?.centerline) {
         centerlinePositions = activePlume.properties.centerline.map(([cLat, cLon]) => Cesium.Cartesian3.fromDegrees(cLon, cLat, 8));
       }
-    } else if (hasFireWind) {
-      const windSpeed = Math.max(2.0, Number(selectedFire.wind_speed_kmh) || 10.0);
-      const windDeg = Number(selectedFire.wind_direction_deg);
-      downwindDeg = Math.round((windDeg + 180.0) % 360.0);
-      const plumeLengthKm = Math.min(25.0, Math.max(3.0, (windSpeed * 0.45) + (Number(selectedFire.frp || 20) * 0.02)));
-
-      const plumeGeo = createDirectionalPlume(lat, lon, downwindDeg, plumeLengthKm);
-      plumeGeo.leafletPositions.forEach(([pLat, pLon]) => {
-        flatCoords.push(pLon, pLat);
+    } else {
+      const generated = createDownwindDispersionPolygon(lat, lon, downwindDeg, lengthKm, null, {}, isDirectional);
+      (generated.outerPolygon || []).forEach(([pLat, pLon]) => {
+        flatOuterCoords.push(pLon, pLat);
       });
-      centerlinePositions = plumeGeo.centerline.map(([cLat, cLon]) => Cesium.Cartesian3.fromDegrees(cLon, cLat, 8));
+      if (generated.corePolygon) {
+        generated.corePolygon.forEach(([pLat, pLon]) => {
+          flatCoreCoords.push(pLon, pLat);
+        });
+      }
+      if (generated.centerline) {
+        centerlinePositions = generated.centerline.map(([cLat, cLon]) => Cesium.Cartesian3.fromDegrees(cLon, cLat, 8));
+      }
+      if (generated.labelPosition) {
+        labelPos = generated.labelPosition;
+      }
     }
 
-    if (flatCoords.length < 6) return;
+    if (flatOuterCoords.length < 6) return;
 
-    // 1. Directional ground corridor (widening wedge, semi-transparent)
+    const statusMsg = activePlume.properties?.status_message || (isDirectional ? 'Estimated Dispersion Corridor' : 'Low wind — directional estimate uncertain');
+    const fillColor = isDirectional ? '#EA580C' : '#F59E0B';
+    const strokeColor = isDirectional ? '#F97316' : '#D97706';
+
+    // 1. Outer Dispersion Corridor Polygon (draped on terrain)
     ds.entities.add({
-      name: 'Estimated Dispersion Corridor',
+      name: isDirectional ? 'Estimated Downwind Dispersion Corridor' : 'Estimated Dispersion Area (Calm Wind)',
       polygon: {
-        hierarchy: Cesium.Cartesian3.fromDegreesArray(flatCoords),
-        material: Cesium.Color.fromCssColorString('#F97316').withAlpha(0.20),
+        hierarchy: Cesium.Cartesian3.fromDegreesArray(flatOuterCoords),
+        material: Cesium.Color.fromCssColorString(fillColor).withAlpha(0.14),
         outline: true,
-        outlineColor: Cesium.Color.fromCssColorString('#FB923C').withAlpha(0.75),
-        outlineWidth: 2.0,
+        outlineColor: Cesium.Color.fromCssColorString(strokeColor).withAlpha(0.65),
+        outlineWidth: 1.5,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
       }
     });
 
-    // 2. Downwind directional centerline vector
-    if (centerlinePositions.length >= 2) {
+    // 2. Inner Core High-Concentration Corridor (draped on terrain)
+    if (flatCoreCoords.length >= 6) {
       ds.entities.add({
-        name: 'Dispersion Centerline',
-        polyline: {
-          positions: centerlinePositions,
-          width: 3.0,
-          material: new Cesium.PolylineGlowMaterialProperty({
-            glowPower: 0.25,
-            color: Cesium.Color.fromCssColorString('#FDBA74').withAlpha(0.85)
-          })
+        name: 'Estimated Near-Source Core Dispersion',
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(flatCoreCoords),
+          material: Cesium.Color.fromCssColorString('#DC2626').withAlpha(0.28),
+          outline: true,
+          outlineColor: Cesium.Color.fromCssColorString('#EF4444').withAlpha(0.80),
+          outlineWidth: 1.5,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
         }
       });
     }
 
-    // 3. Directional dispersion label badge
-    if (downwindDeg != null) {
-      const leadLon = flatCoords[Math.floor(flatCoords.length / 2)];
-      const leadLat = flatCoords[Math.floor(flatCoords.length / 2) + 1];
-      if (leadLon != null && leadLat != null) {
+    if (!isDirectional) {
+      // For calm / missing wind, render non-directional status label
+      ds.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, 20),
+        label: {
+          text: statusMsg,
+          font: 'bold 9.5px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#FCD34D'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2.5,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -65),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
+        }
+      });
+    } else {
+      // 3. Downwind directional centerline polyline
+      if (centerlinePositions.length >= 2) {
         ds.entities.add({
-          position: Cesium.Cartesian3.fromDegrees(leadLon, leadLat, 15),
-          label: {
-            text: `ESTIMATED DISPERSION (DOWNWIND: ${downwindDeg}°)`,
-            font: 'bold 9.5px "JetBrains Mono", monospace',
-            fillColor: Cesium.Color.fromCssColorString('#FED7AA'),
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2.5,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          name: 'Dispersion Centerline',
+          polyline: {
+            positions: centerlinePositions,
+            width: 2.5,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.25,
+              color: Cesium.Color.fromCssColorString('#FDBA74').withAlpha(0.85)
+            })
           }
         });
       }
 
-      // 4. Subtle directional wind indicator originating from the incident (Section 7)
-      const windSpeed = Number(selectedFire.wind_speed_kmh) || 12.0;
-      const arrowLenMeters = Math.min(400, Math.max(140, windSpeed * 18));
+      // 4. Directional wind indicator originating from the incident
+      const rawSpeed = activePlume.properties?.wind_speed_kmh != null ? activePlume.properties.wind_speed_kmh : selectedFire.wind_speed_kmh;
+      const windSpeed = Number(rawSpeed) || 12.0;
+      const arrowLenMeters = Math.min(320, Math.max(100, windSpeed * 14));
       const blowRad = Cesium.Math.toRadians(downwindDeg);
       const endLat = lat + (arrowLenMeters * Math.cos(blowRad)) / 111320;
       const endLon = lon + (arrowLenMeters * Math.sin(blowRad)) / (111320 * Math.cos(lat * Math.PI / 180));
@@ -1246,27 +1298,47 @@ export default function Cesium3DViewer({
         name: 'Surface Wind Vector Indicator',
         polyline: {
           positions: [
-            Cesium.Cartesian3.fromDegrees(lon, lat, 14),
-            Cesium.Cartesian3.fromDegrees(endLon, endLat, 14)
+            Cesium.Cartesian3.fromDegrees(lon, lat, 12),
+            Cesium.Cartesian3.fromDegrees(endLon, endLat, 12)
           ],
-          width: 4.0,
+          width: 3.0,
           material: new Cesium.PolylineArrowMaterialProperty(
-            Cesium.Color.fromCssColorString('#38BDF8').withAlpha(0.85)
+            Cesium.Color.fromCssColorString('#38BDF8').withAlpha(0.90)
           )
+        }
+      });
+
+      // 5. Subtle Map Label
+      const tagLat = labelPos ? labelPos[0] : (lat + (lengthKm * 0.52 * 1000 * Math.cos(blowRad)) / 111320);
+      const tagLon = labelPos ? labelPos[1] : (lon + (lengthKm * 0.52 * 1000 * Math.sin(blowRad)) / (111320 * Math.cos(lat * Math.PI / 180)));
+
+      ds.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(tagLon, tagLat, 15),
+        label: {
+          text: `ESTIMATED DOWNWIND DISPERSION (${lengthKm.toFixed(1)} km • ${Math.round(downwindDeg)}°)`,
+          font: 'bold 9px "JetBrains Mono", monospace',
+          fillColor: Cesium.Color.fromCssColorString('#FDBA74'),
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2.5,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -10),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY
         }
       });
     }
   }, [viewer, activePlume, selectedFire, showPlume]);
 
-  // Sensitive Receptors (Settlements, Schools, Hospitals)
+
+  // Sensitive Receptors in Corridor
   useEffect(() => {
     const ds = receptorsDataSourceRef.current;
     if (!ds) return;
     ds.entities.removeAll();
 
-    if (!showReceptors || !selectedFire) return;
+    if (!showReceptors || !selectedFire || !activePlume) return;
 
-    const exposure = activePlume?.properties?.community_exposure || selectedFire.community_exposure;
+    const exposure = activePlume?.properties?.community_exposure;
     if (!exposure) return;
 
     const corridorReceptors = [
@@ -1275,54 +1347,49 @@ export default function Cesium3DViewer({
       ...(exposure.intersecting_hospitals || []).map(h => ({ ...h, type: 'hospital' }))
     ];
 
-    if (corridorReceptors.length === 0) return;
-
     corridorReceptors.forEach((rec) => {
       const lat = Number(rec.latitude);
       const lon = Number(rec.longitude);
       if (isNaN(lat) || isNaN(lon)) return;
 
       const type = rec.type;
-      let color = Cesium.Color.fromCssColorString('#38BDF8'); // Settlement (Sky blue)
-      if (type === 'school') color = Cesium.Color.fromCssColorString('#c084fc'); // School (Purple)
-      if (type === 'hospital') color = Cesium.Color.fromCssColorString('#F43F5E'); // Hospital (Rose)
-
-      const labelText = `[IN PLUME] ${rec.name} (${rec.distance_km} km)`;
+      let color = Cesium.Color.fromCssColorString('#38BDF8');
+      if (type === 'school') color = Cesium.Color.fromCssColorString('#c084fc');
+      if (type === 'hospital') color = Cesium.Color.fromCssColorString('#F43F5E');
 
       const receptorEntity = ds.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(lon, lat, 20),
+        position: Cesium.Cartesian3.fromDegrees(lon, lat, 15),
         point: {
-          pixelSize: 9,
+          pixelSize: 8,
           color: color,
           outlineColor: Cesium.Color.WHITE,
           outlineWidth: 1.5,
           disableDepthTestDistance: Number.POSITIVE_INFINITY
         },
         label: {
-          text: labelText,
-          font: 'bold 10px monospace',
+          text: `[CORRIDOR] ${rec.name}`,
+          font: 'bold 9.5px monospace',
           fillColor: Cesium.Color.fromCssColorString('#FCA5A5'),
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-          pixelOffset: new Cesium.Cartesian2(0, -8),
+          pixelOffset: new Cesium.Cartesian2(0, -6),
           disableDepthTestDistance: Number.POSITIVE_INFINITY
         }
       });
 
-      receptorEntity.receptorData = {
+      receptorEntity._agniType = 'receptor';
+      receptorEntity._agniData = {
         name: rec.name,
         type: type.toUpperCase(),
-        category: rec.category,
         distance_km: rec.distance_km,
-        source: rec.is_live_osm ? 'Live OpenStreetMap' : 'Curated receptor coverage - demonstration dataset',
         isIntersecting: true
       };
     });
   }, [viewer, selectedFire, activePlume, showReceptors]);
 
-  // Error Fallback UI (Only shown if WebGL completely fails to initialize)
+  // Error Fallback UI
   if (initError) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-[#080b10] text-slate-200 p-6">
@@ -1333,7 +1400,7 @@ export default function Cesium3DViewer({
           ({initError})
         </p>
         <button
-          onClick={onExit3D}
+          onClick={onReturnTo2D || onExit3D}
           className="px-4 py-2 bg-white/[0.08] hover:bg-white/[0.15] text-white rounded-lg border border-white/20 transition-all font-mono text-xs cursor-pointer flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -1343,14 +1410,19 @@ export default function Cesium3DViewer({
     );
   }
 
-  const isDemo = selectedFire?.is_demo || selectedFire?.fire_id?.includes('DEMO');
+  const windSpeedDisplay = selectedFire?.wind_speed_kmh != null 
+    ? `${Math.round(selectedFire.wind_speed_kmh)} km/h` 
+    : (activePlume?.properties?.wind_speed_kmh != null ? `${Math.round(activePlume.properties.wind_speed_kmh)} km/h` : 'CALM');
+  const windDirDisplay = selectedFire?.wind_direction_deg != null 
+    ? `${Math.round(selectedFire.wind_direction_deg)}°` 
+    : (activePlume?.properties?.wind_direction_deg != null ? `${Math.round(activePlume.properties.wind_direction_deg)}°` : '—');
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#080b10] select-none">
-      {/* Cesium Canvas Container — ALWAYS 100% VISIBLE (Section 1) */}
+      {/* Cesium Canvas Container */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Non-Blocking Compact Flight HUD — NO FULLSCREEN OVERLAY (Sections 1, 2, 26) */}
+      {/* Non-Blocking Compact Flight HUD (Task 6) */}
       {isFlying && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none">
           <div className="px-4 py-2 rounded-xl bg-[#0b101b]/85 border border-cyan-500/40 shadow-2xl backdrop-blur-md flex items-center gap-3">
@@ -1368,429 +1440,184 @@ export default function Cesium3DViewer({
                 </span>
               </div>
               <div className="text-[10px] font-mono text-slate-300 mt-0.5">
-                {selectedFire ? `${Number(selectedFire.latitude).toFixed(6)}° N   ${Number(selectedFire.longitude).toFixed(6)}° E` : ''}
+                {selectedFire ? `${Number(selectedFire.latitude).toFixed(5)}° N   ${Number(selectedFire.longitude).toFixed(5)}° E` : ''}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Top Floating Action Bar */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2.5 flex-wrap">
-        {/* Return to 2D Button */}
-        <button
-          id="btn-exit-3d"
-          onClick={onExit3D}
-          className="px-3 py-2 rounded-lg bg-[#0b101b]/90 hover:bg-[#131b2e] text-slate-200 hover:text-white border border-white/15 backdrop-blur-md shadow-lg transition-all font-mono text-xs font-semibold flex items-center gap-2 cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 text-slate-400" />
-          <span>2D VIEW / EXIT 3D</span>
-        </button>
-
-        {/* Locate Selected Event Button */}
-        <button
-          id="btn-locate-event-top"
-          onClick={handleRecenterIncident}
-          disabled={!selectedFire}
-          className="px-3 py-2 rounded-lg bg-cyan-950/80 hover:bg-cyan-900/90 text-cyan-200 hover:text-cyan-100 border border-cyan-500/50 backdrop-blur-md shadow-lg transition-all font-mono text-xs font-semibold flex items-center gap-2 cursor-pointer disabled:opacity-50"
-        >
-          <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
-          <span>LOCATE EVENT</span>
-        </button>
-
-        {/* Incident Details Panel Toggle */}
-        {selectedFire && (
-          <button
-            id="btn-toggle-card"
-            onClick={() => setActiveCard(activeCard ? null : { type: 'thermal', data: selectedFire })}
-            className={`px-3 py-2 rounded-lg border backdrop-blur-md shadow-lg transition-all font-mono text-xs font-semibold flex items-center gap-2 cursor-pointer ${
-              activeCard
-                ? 'bg-red-950/80 text-red-200 border-red-500/50'
-                : 'bg-[#0b101b]/90 text-slate-300 border-white/15 hover:text-white hover:bg-[#131b2e]'
-            }`}
-          >
-            <MapPin className="w-3.5 h-3.5 text-red-400" />
-            <span>{activeCard ? 'HIDE DETAILS' : 'INCIDENT DETAILS'}</span>
-          </button>
-        )}
-
-        {/* Layer Controls Dropdown Toggle */}
-        <div className="relative">
-          <button
-            id="btn-toggle-layers"
-            onClick={() => setLayersMenuOpen(!layersMenuOpen)}
-            className={`px-3 py-2 rounded-lg border backdrop-blur-md shadow-lg transition-all font-mono text-xs font-semibold flex items-center gap-2 cursor-pointer ${
-              layersMenuOpen
-                ? 'bg-white/[0.14] text-white border-white/30'
-                : 'bg-[#0b101b]/90 text-slate-300 border-white/15 hover:text-white hover:bg-[#131b2e]'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-slate-400" />
-            <span>3D LAYERS</span>
-          </button>
-
-          {/* Layer Controls Popover */}
-          {layersMenuOpen && (
-            <div className="absolute left-0 mt-2 w-64 rounded-lg bg-[#0b101b]/95 border border-white/15 shadow-2xl backdrop-blur-xl p-2.5 z-40 space-y-1 font-sans text-xs">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2 py-1 border-b border-white/10 mb-1 flex items-center justify-between">
-                <span>3D Geospatial Layers</span>
-                <span className="text-cyan-400 text-[9px] font-semibold">{tilesetMode.toUpperCase()}</span>
-              </div>
-
-              {/* World Terrain */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>World Terrain</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showTerrain}
-                  onChange={(e) => setShowTerrain(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* OSM Buildings */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>OSM Buildings</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showBuildings}
-                  disabled={!tilesetRef.current}
-                  onChange={(e) => setShowBuildings(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer disabled:opacity-40"
-                />
-              </label>
-
-              {/* Satellite Imagery */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Eye className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Satellite Imagery</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showSatellite}
-                  onChange={(e) => setShowSatellite(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Exact FIRMS Observation */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                  <span>Exact FIRMS Observation</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showThermal}
-                  onChange={(e) => setShowThermal(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Facility Footprint */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Facility Footprint</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showFacility}
-                  onChange={(e) => setShowFacility(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Estimated Dispersion */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Wind className="w-3.5 h-3.5 text-orange-400" />
-                  <span>Estimated Dispersion</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showPlume}
-                  onChange={(e) => setShowPlume(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Sensitive Receptors */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Sensitive Receptors</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showReceptors}
-                  onChange={(e) => setShowReceptors(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-
-              {/* Roads & Boundaries */}
-              <label className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.06] cursor-pointer text-slate-200">
-                <span className="flex items-center gap-2">
-                  <Compass className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Roads & Boundaries</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showRoads}
-                  onChange={(e) => setShowRoads(e.target.checked)}
-                  className="rounded border-slate-700 bg-slate-900 text-cyan-500 cursor-pointer"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-
-        {/* Non-Blocking 3D Data Status Pill (Section 11) */}
-        <div className="px-2.5 py-1.5 rounded-lg bg-[#0b101b]/90 border border-white/15 backdrop-blur-md shadow-lg flex items-center gap-1.5 text-[10px] font-mono text-slate-300">
-          <span className="text-slate-400">3D DATA:</span>
-          <span className={`font-bold tracking-wide ${
-            tilesetStatusText.includes('UNAVAILABLE') 
-              ? 'text-amber-400/90' 
-              : 'text-cyan-300'
-          }`}>
-            {tilesetStatusText}
-          </span>
-        </div>
-      </div>
-
-      {/* Vertical GIS Navigation Toolbar (Left Side) */}
+      {/* Task 11: GIS Navigation Toolbar */}
       <div 
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
-        className="absolute top-20 left-4 z-20 pointer-events-auto flex flex-col items-center bg-[#0b101b]/95 border border-white/20 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden p-1.5 space-y-1 text-slate-300 select-none"
+        className="absolute top-3 left-[285px] z-20 pointer-events-auto flex items-center bg-[#0b101b]/95 border border-white/20 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden p-1 space-x-1 text-slate-300 select-none"
       >
-        {/* Zoom In */}
+        {/* TARGET EVENT (Recenter on selected incident) */}
+        <button
+          type="button"
+          id="btn-target-event"
+          onClick={(e) => { e.stopPropagation(); handleRecenterIncident(); }}
+          title={selectedFire ? "Target Event (Oblique 3D Focus)" : "Select an event first"}
+          disabled={!selectedFire}
+          className="px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-mono font-semibold hover:text-cyan-300 hover:bg-white/10 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+        >
+          <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="hidden sm:inline">TARGET EVENT</span>
+        </button>
+
+        <div className="w-[1px] h-4 bg-white/15" />
+
+        {/* RESET VIEW */}
+        <button
+          type="button"
+          id="btn-reset-view"
+          onClick={(e) => { e.stopPropagation(); handleResetHome(); }}
+          title="Reset View (Regional Overview)"
+          className="px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-mono font-semibold hover:text-cyan-300 hover:bg-white/10 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer"
+        >
+          <Home className="w-3.5 h-3.5 text-slate-300" />
+          <span className="hidden sm:inline">RESET VIEW</span>
+        </button>
+
+        <div className="w-[1px] h-4 bg-white/15" />
+
+        {/* ZOOM IN */}
         <button
           type="button"
           id="btn-zoom-in"
           onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
           title="Zoom In (+)"
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer font-bold text-base"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
         </button>
 
-        {/* Zoom Out */}
+        {/* ZOOM OUT */}
         <button
           type="button"
           id="btn-zoom-out"
           onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
           title="Zoom Out (−)"
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer font-bold text-base"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer"
         >
-          <Minus className="w-4 h-4" />
+          <Minus className="w-3.5 h-3.5" />
         </button>
 
-        <div className="w-5 h-[1px] bg-white/15 my-0.5" />
+        <div className="w-[1px] h-4 bg-white/15" />
 
-        {/* Recenter on Incident / Home */}
+        {/* ROTATE CCW */}
         <button
           type="button"
-          id="btn-reset-home"
-          onClick={(e) => { e.stopPropagation(); handleResetHome(); }}
-          title="Home - Regional Overview"
-          disabled={!selectedFire}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-cyan-300 hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer disabled:opacity-40"
+          onClick={(e) => { e.stopPropagation(); handleRotate(-20); }}
+          title="Rotate Left"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:scale-95 transition-all cursor-pointer"
         >
-          <Home className="w-4 h-4" />
+          <RotateCcw className="w-3.5 h-3.5" />
         </button>
 
-        {/* Locate Active Anomaly */}
+        {/* ROTATE CW */}
         <button
           type="button"
-          id="btn-locate-event"
-          onClick={(e) => { e.stopPropagation(); handleRecenterIncident(); }}
-          title="Locate Incident (Cinematic 3D Flight)"
-          disabled={!selectedFire}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-cyan-300 hover:bg-white/15 active:bg-cyan-500/30 active:scale-95 transition-all cursor-pointer disabled:opacity-40"
+          onClick={(e) => { e.stopPropagation(); handleRotate(20); }}
+          title="Rotate Right"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:scale-95 transition-all cursor-pointer"
         >
-          <Crosshair className="w-4 h-4 text-cyan-400" />
+          <RotateCw className="w-3.5 h-3.5" />
         </button>
 
-        <div className="w-5 h-[1px] bg-white/15 my-0.5" />
+        <div className="w-[1px] h-4 bg-white/15" />
 
-        {/* Expand/Collapse Directional Pan Cluster */}
+        {/* TILT */}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setNavControlsExpanded(!navControlsExpanded); }}
-          title={navControlsExpanded ? "Hide Pan Controls" : "Show Pan Controls"}
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 transition-all cursor-pointer text-slate-400"
+          onClick={(e) => { e.stopPropagation(); handleTilt('up'); }}
+          title="Tilt Pitch Up"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:scale-95 transition-all cursor-pointer"
         >
-          <Navigation className="w-3.5 h-3.5 text-cyan-400" />
+          <ChevronUp className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleTilt('down'); }}
+          title="Tilt Pitch Down"
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:text-white hover:bg-white/15 active:scale-95 transition-all cursor-pointer"
+        >
+          <ChevronDown className="w-3.5 h-3.5" />
         </button>
 
-        {navControlsExpanded && (
-          <div className="pt-1 pb-1 flex flex-col items-center gap-1 border-t border-white/10 mt-1">
-            {/* Pan North */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handlePan('north'); }}
-              title="Pan North"
-              className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-white active:scale-95 transition-all cursor-pointer"
-            >
-              <ChevronUp className="w-4 h-4" />
-            </button>
+        <div className="w-[1px] h-4 bg-white/15" />
 
-            {/* Pan West & East */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handlePan('west'); }}
-                title="Pan West"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-white active:scale-95 transition-all cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handlePan('east'); }}
-                title="Pan East"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-white active:scale-95 transition-all cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Pan South */}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handlePan('south'); }}
-              title="Pan South"
-              className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-white active:scale-95 transition-all cursor-pointer"
-            >
-              <ChevronDown className="w-4 h-4" />
-            </button>
-
-            <div className="w-5 h-[1px] bg-white/15 my-1" />
-
-            {/* Orbit Left & Right */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleOrbit('left'); }}
-                title="Orbit Left"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-cyan-300 active:scale-95 transition-all cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleOrbit('right'); }}
-                title="Orbit Right"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-cyan-300 active:scale-95 transition-all cursor-pointer"
-              >
-                <RotateCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Tilt Up & Down */}
-            <div className="flex items-center gap-1 mt-0.5">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleTilt('up'); }}
-                title="Tilt Up"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-amber-300 active:scale-95 font-mono text-[9px] font-bold cursor-pointer"
-              >
-                ▲T
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handleTilt('down'); }}
-                title="Tilt Down"
-                className="w-7 h-7 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/15 hover:text-amber-300 active:scale-95 font-mono text-[9px] font-bold cursor-pointer"
-              >
-                ▼T
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="w-5 h-[1px] bg-white/15 my-0.5" />
-
-        {/* Reset North / Compass */}
+        {/* RETURN TO 2D */}
         <button
           type="button"
-          id="btn-reset-north"
-          onClick={(e) => { e.stopPropagation(); handleResetNorth(); }}
-          title="Reset Camera North"
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:text-amber-400 hover:bg-white/15 active:scale-95 transition-all cursor-pointer"
+          id="btn-return-to-2d"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onReturnTo2D) onReturnTo2D();
+            else if (onExit3D) onExit3D();
+          }}
+          title="Return to 2D Map"
+          className="px-2.5 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-mono font-semibold bg-white/[0.05] hover:bg-white/[0.12] text-amber-300 hover:text-amber-200 border border-amber-500/30 active:scale-95 transition-all cursor-pointer"
         >
-          <Compass className="w-4 h-4 text-amber-400" />
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>RETURN TO 2D</span>
         </button>
       </div>
 
-      {/* On-Canvas Incident Information Panel */}
+      {/* Task 5: Incident Card with FIRMS Observation Coordinate Label */}
       {activeCard && (
-        <div className="absolute top-20 left-16 z-30 w-84 max-w-[calc(100vw-5rem)] rounded-xl bg-[#0b101b]/95 border border-white/20 shadow-2xl backdrop-blur-xl p-4 font-sans text-xs text-slate-200">
-          <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-white/10">
+        <div className="absolute top-14 left-[285px] z-30 w-72 max-w-[calc(100vw-20rem)] rounded-xl bg-[#0b101b]/95 border border-white/20 shadow-2xl backdrop-blur-xl p-3 font-sans text-xs text-slate-200">
+          <div className="flex items-start justify-between gap-1.5 pb-2 border-b border-white/10">
             {activeCard.type === 'thermal' && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                  <span className="w-2 h-2 rounded-full bg-red-500 -ml-3.5" />
-                  <span className="font-mono font-bold text-white text-xs tracking-wider">
-                    {activeCard.data.event_id || activeCard.data.fire_id}
-                  </span>
-                  <span className={`ml-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold border ${
-                    activeCard.data.is_emergency
-                      ? 'bg-red-500/20 text-red-300 border-red-500/40'
-                      : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                  }`}>
-                    {activeCard.data.threat_level || (activeCard.data.is_emergency ? 'CRITICAL' : 'INDUSTRIAL')}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="font-mono font-bold text-cyan-300 text-[10px] tracking-wider uppercase">
+                    FIRMS OBSERVATION COORDINATE
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-200 font-semibold">
-                  {activeCard.data.facility_name && activeCard.data.facility_name !== 'None' ? activeCard.data.facility_name : 'NO VERIFIED FACILITY MATCH'}
+                <div className="font-mono font-bold text-white text-[12px] tracking-wider truncate">
+                  {activeCard.data.event_id || activeCard.data.fire_id}
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  {activeCard.data.location?.district ? `${activeCard.data.location.district}, ${activeCard.data.location.state}` : 'India Subcontinent Zone'}
+                <div className="text-[10px] text-slate-300 truncate">
+                  {activeCard.data.facility_name && activeCard.data.facility_name !== 'None'
+                    ? activeCard.data.facility_name
+                    : (activeCard.data.location?.district ? `${activeCard.data.location.district}, ${activeCard.data.location.state}` : 'Terrestrial Zone')}
                 </div>
               </div>
             )}
 
             {activeCard.type === 'facility' && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Building2 className="w-4 h-4 text-amber-400" />
-                  <span className="font-mono font-bold text-amber-300 text-xs tracking-wider">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-mono font-bold text-amber-300 text-[10px] tracking-wider">
                     INDUSTRIAL FACILITY
                   </span>
                 </div>
-                <div className="text-[11px] text-white font-semibold">
+                <div className="text-[11px] text-white font-semibold truncate">
                   {activeCard.data.name}
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono">
+                <div className="text-[10px] text-slate-400 font-mono truncate">
                   {activeCard.data.category || 'Refining & Heavy Industry'}
                 </div>
               </div>
             )}
 
             {activeCard.type === 'receptor' && (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <MapPin className="w-4 h-4 text-sky-400" />
-                  <span className="font-mono font-bold text-sky-300 text-xs tracking-wider uppercase">
-                    {activeCard.data.type || 'SENSITIVE RECEPTOR'}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="font-mono font-bold text-sky-300 text-[10px] tracking-wider uppercase truncate">
+                    EXPOSURE STATUS
                   </span>
                 </div>
-                <div className="text-[11px] text-white font-semibold">
+                <div className="text-[11px] text-white font-semibold truncate">
                   {activeCard.data.name}
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  {activeCard.data.category || activeCard.data.district}
+                <div className="text-[10px] text-slate-400 font-mono truncate">
+                  {activeCard.data.type || 'SENSITIVE RECEPTOR'}
                 </div>
               </div>
             )}
@@ -1798,86 +1625,56 @@ export default function Cesium3DViewer({
             <button
               id="btn-close-card"
               onClick={() => setActiveCard(null)}
-              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer shrink-0"
+              title="Close panel"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Demonstration Mode Badge if applicable */}
-          {isDemo && (
-            <div className="mt-2 px-2 py-1 rounded bg-blue-950/60 border border-blue-500/40 text-[9.5px] font-mono text-blue-300">
-              DEMONSTRATION SCENARIO — CURATED TELEMETRY
-            </div>
-          )}
-
-          {/* Card Body with Authentic FIRMS Parameters */}
-          <div className="py-2.5 space-y-2 font-mono text-[11px]">
+          <div className="py-2 space-y-1.5 font-mono text-[10.5px]">
             {activeCard.type === 'thermal' && (
               <>
-                <div className="grid grid-cols-2 gap-2 bg-black/40 p-2 rounded border border-white/5">
-                  <div>
-                    <span className="text-[9.5px] text-slate-400 block">FIRE RADIATIVE POWER</span>
-                    <span className="text-amber-400 font-bold text-xs">{Number(activeCard.data.frp || 0).toFixed(1)} MW</span>
-                  </div>
-                  <div>
-                    <span className="text-[9.5px] text-slate-400 block">BRIGHTNESS TEMP</span>
-                    <span className="text-orange-300 font-bold text-xs">{Number(activeCard.data.brightness || activeCard.data.bright_ti4 || 345.2).toFixed(1)} K</span>
-                  </div>
+                <div className="flex items-center justify-between text-slate-200 font-semibold px-0.5">
+                  <span>{Number(activeCard.data.latitude).toFixed(5)}° N</span>
+                  <span>{Number(activeCard.data.longitude).toFixed(5)}° E</span>
                 </div>
 
-                <div className="text-[10px] space-y-1 text-slate-300 bg-white/[0.02] p-2 rounded border border-white/5">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">LATITUDE:</span>
-                    <span className="text-slate-100 font-semibold">{Number(activeCard.data.latitude).toFixed(6)}° N</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">LONGITUDE:</span>
-                    <span className="text-slate-100 font-semibold">{Number(activeCard.data.longitude).toFixed(6)}° E</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">SATELLITE:</span>
-                    <span className="text-slate-200">{activeCard.data.satellites_display || (activeCard.data.satellite ? `${activeCard.data.satellite} / VIIRS` : 'NOAA-21 / VIIRS')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">OBSERVATION:</span>
-                    <span className="text-slate-200">{formatUtcTime(activeCard.data.acq_date, activeCard.data.acq_time)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">CONFIDENCE:</span>
-                    <span className="text-emerald-400 font-semibold">
-                      {formatConfidence(activeCard.data.confidence)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">CLASSIFICATION:</span>
-                    <span className="text-amber-300 font-semibold">{activeCard.data.category?.replace(/_/g, ' ') || 'Industrial Incident'}</span>
-                  </div>
-                  {activeCard.data.anomaly_ratio && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">ANOMALY RATIO:</span>
-                      <span className="text-red-400 font-bold">{Number(activeCard.data.anomaly_ratio).toFixed(2)}× Baseline</span>
-                    </div>
-                  )}
+                <div className="text-[9.5px] text-slate-400 italic px-0.5">
+                  Satellite infrared detection coordinate (VIIRS 375m). Not claimed as exact physical ignition origin.
                 </div>
 
-                <div className="pt-1 flex items-center gap-2">
+                <div className="flex items-center justify-between px-0.5 pt-1">
+                  <span className="text-[10.5px] font-bold text-red-400 truncate max-w-[150px]">
+                    {activeCard.data.predicted_class || (activeCard.data.is_emergency ? 'INDUSTRIAL FIRE' : 'THERMAL ANOMALY')}
+                  </span>
+                  <span className="text-amber-400 font-bold">
+                    FIRE RADIATIVE POWER: {Number(activeCard.data.frp || 0).toFixed(1)} MW
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400 text-[9.5px] px-0.5">
+                  <span>{activeCard.data.satellites_display || activeCard.data.satellite || 'VIIRS NOAA-21'}</span>
+                  <span className="text-slate-300">{formatUtcTime(activeCard.data.acq_date, activeCard.data.acq_time)}</span>
+                </div>
+
+                <div className="pt-1 flex items-center gap-1.5">
                   <button
                     id="btn-card-locate"
                     onClick={() => flyToIncident(activeCard.data)}
-                    className="flex-1 py-1.5 rounded bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-200 hover:text-cyan-100 font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    className="flex-1 py-1 rounded bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-200 hover:text-cyan-100 font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Crosshair className="w-3 h-3 text-cyan-400" />
-                    <span>RECENTER ON INCIDENT</span>
+                    <span>RECENTER</span>
                   </button>
                   {onOpenReport && (
                     <button
                       id="btn-card-open-incident"
                       onClick={() => onOpenReport(activeCard.data)}
-                      className="flex-1 py-1.5 rounded bg-white/[0.08] hover:bg-white/[0.15] border border-white/20 text-white font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      className="flex-1 py-1 rounded bg-white/[0.08] hover:bg-white/[0.15] border border-white/20 text-white font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <FileText className="w-3 h-3 text-cyan-400" />
-                      <span>VIEW INCIDENT ASSESSMENT</span>
+                      <span>ASSESSMENT</span>
                     </button>
                   )}
                 </div>
@@ -1886,32 +1683,28 @@ export default function Cesium3DViewer({
 
             {activeCard.type === 'facility' && (
               <>
-                <div className="text-[10px] space-y-1.5 text-slate-300 bg-black/40 p-2 rounded border border-white/5">
+                <div className="text-[10px] space-y-1 text-slate-300 bg-black/40 p-1.5 rounded border border-white/5">
                   <div className="flex justify-between">
                     <span className="text-slate-400">CATEGORY:</span>
-                    <span className="text-slate-200">{activeCard.data.category || 'Heavy Industry / Refining'}</span>
+                    <span className="text-slate-200 truncate max-w-[140px]">{activeCard.data.category || 'Heavy Industry'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">DISTRICT / STATE:</span>
-                    <span className="text-slate-200">{activeCard.data.district || 'District'}, {activeCard.data.state || 'India'}</span>
+                    <span className="text-slate-400">DISTRICT:</span>
+                    <span className="text-slate-200 truncate max-w-[140px]">{activeCard.data.district || 'District'}, {activeCard.data.state || 'India'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">BASELINE FRP:</span>
                     <span className="text-amber-300 font-semibold">{activeCard.data.baseline_frp_mw || 45.0} MW</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">SOURCE:</span>
-                    <span className="text-amber-300 font-semibold">OpenStreetMap Verified Perimeter</span>
                   </div>
                 </div>
 
                 <div className="pt-1">
                   <button
                     onClick={() => flyToIncident(selectedFire)}
-                    className="w-full py-1.5 rounded bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50 text-amber-200 hover:text-amber-100 font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    className="w-full py-1 rounded bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50 text-amber-200 hover:text-amber-100 font-semibold text-[10px] tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Crosshair className="w-3 h-3" />
-                    <span>FOCUS ON THERMAL EVENT</span>
+                    <span>FOCUS ON INCIDENT</span>
                   </button>
                 </div>
               </>
@@ -1919,18 +1712,14 @@ export default function Cesium3DViewer({
 
             {activeCard.type === 'receptor' && (
               <>
-                <div className="text-[10px] space-y-1.5 text-slate-300 bg-black/40 p-2 rounded border border-white/5">
+                <div className="text-[10px] space-y-1 text-slate-300 bg-black/40 p-1.5 rounded border border-white/5">
                   <div className="flex justify-between">
                     <span className="text-slate-400">EXPOSURE STATUS:</span>
-                    <span className="font-semibold text-red-400">IN ESTIMATED DISPERSION CORRIDOR</span>
+                    <span className="font-semibold text-red-400">IN ESTIMATED PLUME</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">DISTANCE TO FIRE:</span>
+                    <span className="text-slate-400">DISTANCE:</span>
                     <span className="text-slate-200 font-semibold">{activeCard.data.distance_km ? `${activeCard.data.distance_km} km` : 'Near Anomaly'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">SOURCE:</span>
-                    <span className="text-slate-300">{activeCard.data.source}</span>
                   </div>
                 </div>
               </>
@@ -1939,69 +1728,49 @@ export default function Cesium3DViewer({
         </div>
       )}
 
-      {/* Camera Accuracy & Coordinate Telemetry Verification HUD (Section 5) */}
-      <div className="absolute bottom-3 left-4 z-20 pointer-events-auto flex items-center gap-3 text-[10.5px] font-mono text-slate-300 bg-[#0b101b]/95 px-3 py-1.5 rounded-lg border border-white/15 backdrop-blur-md shadow-xl flex-wrap">
+      {/* Task 5, 6, 9 & 14: Camera Accuracy, Wind & Coordinate Telemetry Verification HUD */}
+      <div className="absolute bottom-3 left-[285px] z-20 pointer-events-auto flex items-center gap-2.5 text-[9.5px] font-mono text-slate-300 bg-[#0b101b]/95 px-2.5 py-1 rounded-lg border border-white/15 backdrop-blur-md shadow-xl flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-red-500" />
-          <span className="text-slate-400">EVENT COORDS:</span>
+          <span className="text-slate-400">FIRMS COORDS:</span>
           <span className="text-white font-bold">
-            {selectedFire ? `${Number(selectedFire.latitude).toFixed(6)}° N, ${Number(selectedFire.longitude).toFixed(6)}° E` : 'SELECT EVENT'}
+            {selectedFire ? `${Number(selectedFire.latitude).toFixed(5)}° N, ${Number(selectedFire.longitude).toFixed(5)}° E` : 'SELECT EVENT'}
           </span>
         </div>
         <div className="h-3 w-[1px] bg-white/15" />
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-400">INCIDENT TARGET:</span>
-          <span className="text-cyan-300 font-bold">
-            {cameraTelemetry.targetLat != null ? `${cameraTelemetry.targetLat.toFixed(6)}° N, ${cameraTelemetry.targetLon.toFixed(6)}° E` : (selectedFire ? `${Number(selectedFire.latitude).toFixed(6)}° N, ${Number(selectedFire.longitude).toFixed(6)}° E` : 'TRACKING...')}
+          <span className="text-slate-400">ALTITUDE:</span>
+          <span className="text-slate-200 font-semibold">
+            {cameraTelemetry.altitude ? `${cameraTelemetry.altitude.toLocaleString()}m` : '350m'}
           </span>
-        </div>
-        <div className="h-3 w-[1px] bg-white/15" />
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-400">ALT:</span>
-          <span className="text-slate-200">{cameraTelemetry.altitude ? `${cameraTelemetry.altitude.toLocaleString()}m` : '240m'}</span>
         </div>
         <div className="h-3 w-[1px] bg-white/15" />
         <div className="flex items-center gap-1.5">
           <span className="text-slate-400">PITCH:</span>
-          <span className="text-amber-300 font-semibold">{cameraTelemetry.pitch != null ? `${cameraTelemetry.pitch}°` : '-58°'}</span>
+          <span className="text-amber-300 font-semibold">{cameraTelemetry.pitch != null ? `${cameraTelemetry.pitch}°` : '-30°'}</span>
         </div>
         <div className="h-3 w-[1px] bg-white/15" />
+        {/* Task 9: Live Wind Indicator in Telemetry */}
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-400">DATA:</span>
-          <span className="text-emerald-400 font-semibold">{tilesetStatusText}</span>
+          <Wind className="w-3 h-3 text-sky-400" />
+          <span className="text-slate-400">SURFACE WIND:</span>
+          <span className="text-sky-300 font-semibold">
+            {windSpeedDisplay} • {windDirDisplay}
+          </span>
+        </div>
+        <div className="h-3 w-[1px] bg-white/15" />
+        {/* Task 14: Truthful 3D Status (shows "3D Terrain unavailable" if Ion terrain is down) */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-400">3D DATA:</span>
+          <span className={`font-bold ${
+            tilesetStatusText.includes('unavailable') || tilesetStatusText.includes('UNAVAILABLE')
+              ? 'text-amber-400'
+              : 'text-emerald-400'
+          }`}>
+            {tilesetStatusText}
+          </span>
         </div>
       </div>
-
-      {/* Right Side Compact 3D Incident Inspector Overlay (Section 18) — REMAINS VISIBLE DURING FLIGHT */}
-      {selectedFire && (
-        <div className="absolute top-4 right-4 bottom-12 z-20 flex pointer-events-none">
-          {inspectorExpanded ? (
-            <div className="pointer-events-auto h-full flex shadow-2xl">
-              <Cesium3DInspector
-                fire={selectedFire}
-                activePlume={activePlume}
-                isFlying={isFlying}
-                onLocateEvent={handleRecenterIncident}
-                onExit3D={onExit3D}
-                onTogglePlume={onTogglePlume}
-                isPlumeActive={isPlumeActive}
-                plumeLoading={plumeLoading}
-                onOpenReport={onOpenReport}
-                onCollapse={() => setInspectorExpanded(false)}
-              />
-            </div>
-          ) : (
-            <button
-              onClick={() => setInspectorExpanded(true)}
-              className="pointer-events-auto self-start px-3 py-2 rounded-lg bg-[#0b101b]/95 hover:bg-[#131b2e] border border-cyan-500/40 text-cyan-300 font-mono text-xs font-semibold shadow-2xl backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer"
-              title="Open 3D Incident Inspector"
-            >
-              <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span>3D INSPECTOR</span>
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

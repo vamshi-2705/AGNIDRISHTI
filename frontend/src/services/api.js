@@ -148,3 +148,14 @@ export async function getDataHealth() {
     return { data: null, isLive: false, error: 'HEALTH CHECK UNAVAILABLE' };
   }
 }
+
+export async function getSatelliteEvidence(fireId) {
+  try {
+    const data = await fetchWithTimeout(`${BASE_URL}/api/satellite-evidence/${fireId}`);
+    return { data, isLive: true };
+  } catch (err) {
+    console.warn(`[AGNIDRISHTI API] Satellite evidence fetch failed for ${fireId}:`, err.message);
+    return { data: null, isLive: false, error: 'SATELLITE EVIDENCE UNAVAILABLE' };
+  }
+}
+

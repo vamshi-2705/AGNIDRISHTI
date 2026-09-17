@@ -88,12 +88,29 @@ def init_db():
 init_db()
 
 
+def generate_event_id(lat: float, lon: float) -> str:
+    """Generates a clean, deterministic, stable event identifier from rounded coordinates."""
+    coord_hash = hashlib.md5(f"{round(lat, 3)}_{round(lon, 3)}".encode("utf-8")).hexdigest()[:6].upper()
+    return f"AGNI-LIVE-{coord_hash}"
+
+
 def generate_obs_id(obs: Dict[str, Any]) -> str:
     key = f"{obs.get('latitude'):.4f}_{obs.get('longitude'):.4f}_{obs.get('acq_date')}_{obs.get('acq_time')}_{obs.get('satellite')}"
     return "OBS-" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
 
 
-def find_nearest_event(lat: float, lon: float, threshold_deg: float = 0.0055) -> Optional[sqlite3.Row]:
+DEFAULT_SPATIAL_RADIUS_M = 500.0
+
+
+def get_spatial_threshold_deg(radius_m: Optional[float] = None) -> float:
+    """Converts a configurable geographic radius in meters to approximate decimal degrees (~111km/deg)."""
+    r_m = radius_m if radius_m is not None else float(os.getenv("PERSISTENCE_SPATIAL_RADIUS_M", str(DEFAULT_SPATIAL_RADIUS_M)))
+    return max(0.001, round(r_m / 111000.0, 5))
+
+
+def find_nearest_event(lat: float, lon: float, threshold_deg: Optional[float] = None) -> Optional[sqlite3.Row]:
+    if threshold_deg is None:
+        threshold_deg = get_spatial_threshold_deg()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM thermal_events")
@@ -138,7 +155,7 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
 
     # In-memory clustering of incoming batch to assign consistent event_ids
     clusters: List[List[Dict[str, Any]]] = []
-    spatial_threshold_deg = 0.0055
+    spatial_threshold_deg = get_spatial_threshold_deg()
 
     for rec in raw_records:
         lat = rec["latitude"]
@@ -172,9 +189,8 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
             if existing_event:
                 event_id = existing_event["event_id"]
             else:
-                # Generate clean, stable event identifier from coordinate hash or counter
-                coord_hash = hashlib.md5(f"{round(lat, 3)}_{round(lon, 3)}".encode("utf-8")).hexdigest()[:6].upper()
-                event_id = f"AGNI-LIVE-{coord_hash}"
+                # Generate clean, stable event identifier from coordinate hash
+                event_id = generate_event_id(lat, lon)
 
             # Insert or ignore individual observations
             for obs in cluster:
@@ -190,18 +206,18 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
                     event_id,
                     obs.get("latitude"),
                     obs.get("longitude"),
-                    obs.get("brightness", 330.0),
-                    obs.get("scan", 0.4),
-                    obs.get("track", 0.4),
+                    obs.get("brightness"),
+                    obs.get("scan"),
+                    obs.get("track"),
                     obs.get("acq_date"),
                     obs.get("acq_time"),
                     obs.get("satellite"),
                     obs.get("instrument", "VIIRS (375m)"),
-                    obs.get("confidence", "nominal"),
+                    obs.get("confidence"),
                     obs.get("version", "2.0NRT"),
-                    obs.get("bright_t31", 300.0),
-                    obs.get("frp", 15.0),
-                    obs.get("daynight", "D"),
+                    obs.get("bright_t31"),
+                    obs.get("frp"),
+                    obs.get("daynight"),
                     obs.get("source", "NASA FIRMS NRT"),
                     sync_time_str
                 ))
@@ -215,24 +231,31 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
 
             history = []
             satellites_set = set()
-            peak_frp = 0.0
+            peak_frp = None
 
             for row in stored_rows:
-                frp_val = round(float(row["frp"]), 1)
-                peak_frp = max(peak_frp, frp_val)
+                raw_frp = row["frp"]
+                frp_val = round(float(raw_frp), 1) if raw_frp is not None else None
+                if frp_val is not None:
+                    peak_frp = max(peak_frp, frp_val) if peak_frp is not None else frp_val
                 raw_sat = row["satellite"] or "SNPP"
                 short_sat = SATELLITE_SHORT_MAP.get(raw_sat, raw_sat)
                 satellites_set.add(short_sat)
 
                 history.append({
-                    "time": format_utc_time(row["acq_time"]),
+                    "time": format_utc_time(row["acq_time"]) if row["acq_time"] else None,
                     "acq_date": row["acq_date"],
-                    "raw_time": str(row["acq_time"]),
+                    "raw_time": str(row["acq_time"]) if row["acq_time"] else None,
                     "frp": frp_val,
-                    "brightness": round(float(row["brightness"]), 1),
+                    "brightness": round(float(row["brightness"]), 1) if row["brightness"] is not None else None,
                     "satellite": raw_sat,
                     "satellite_short": short_sat,
-                    "source": "NASA FIRMS NRT"
+                    "confidence": row["confidence"],
+                    "latitude": float(row["latitude"]) if row["latitude"] is not None else None,
+                    "longitude": float(row["longitude"]) if row["longitude"] is not None else None,
+                    "daynight": row["daynight"] if ("daynight" in row.keys() and row["daynight"]) else "D",
+                    "source": "NASA FIRMS NRT",
+                    "received_at": row["received_at"]
                 })
 
             satellites_list = sorted(list(satellites_set))
@@ -331,9 +354,10 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
                 "latitude": lat,
                 "longitude": lon,
                 "frp": last_frp,
-                "brightness": last_obs.get("brightness", 0.0),
-                "acq_date": last_obs.get("acq_date"),
-                "acq_time": last_obs.get("raw_time"),
+                "brightness": last_obs.get("brightness"),
+                "confidence": lead_obs.get("confidence"),
+                "acq_date": last_obs.get("acq_date") or lead_obs.get("acq_date"),
+                "acq_time": last_obs.get("raw_time") or lead_obs.get("acq_time"),
                 "satellites": satellites_list,
                 "satellites_display": satellites_display,
                 "observation_count": len(history),
@@ -343,12 +367,13 @@ def persist_and_rebuild_events(raw_records: List[Dict[str, Any]], sync_time_str:
                 "latest_detection": last_obs.get("time"),
                 "trend": trend,
                 "trend_direction": trend_direction,
+                "received_at": sync_time_str,
                 "source_info": {
                     "satellite": satellites_display,
                     "source": "NASA FIRMS NRT",
                     "spatial_resolution": "375 m",
                     "observed_time": last_obs.get("time"),
-                    "received_time": "NRT Ground Downlink",
+                    "received_time": sync_time_str,
                     "synced_time": sync_time_str
                 }
             }

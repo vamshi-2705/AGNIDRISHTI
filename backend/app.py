@@ -37,6 +37,8 @@ from geocoding_service import reverse_geocode_live
 from plume_service import calculate_plume_cone, fetch_live_wind
 from community_exposure import evaluate_community_exposure, get_sensitive_locations_geojson
 from event_store import get_data_store_health
+from ml_classifier import get_event_classifier, TARGET_CLASSES, FEATURE_NAMES, generate_reference_baseline_dataset
+from satellite_evidence_service import get_satellite_evidence_for_incident
 
 app = FastAPI(
     title="AGNIDRISHTI - Geospatial AI Industrial Fire Surveillance Engine",
@@ -44,7 +46,7 @@ app = FastAPI(
         "Production-grade GIS backend for NTRO SIH 2026 Problem Statement 26162. "
         "Delivers automated multi-spectral satellite thermal anomaly ingestion (NASA FIRMS VIIRS), "
         "OpenStreetMap industrial boundary intersection, FRP baseline anomaly segregation, "
-        "and dynamic Gaussian toxic smoke plume dispersion modeling."
+        "and dynamic directional estimated atmospheric dispersion modeling."
     ),
     version="1.0.0",
     docs_url="/docs",
@@ -73,8 +75,9 @@ def get_root_status() -> Dict[str, Any]:
         "deliverables_fulfilled": {
             "deliverable_i": "AI-Driven Thermal Anomaly Segregation & Baseline Profiling",
             "deliverable_ii": "OpenStreetMap Industrial Facility Boundary Intersection",
-            "deliverable_iii": "Gaussian Toxic Smoke Dispersion Plume Modeling"
+            "deliverable_iii": "Directional Estimated Atmospheric Dispersion Modeling"
         },
+
         "endpoints": {
             "fires": "/api/fires?filter_mode=all|industrial|emergencies",
             "facilities": "/api/facilities",
@@ -82,8 +85,50 @@ def get_root_status() -> Dict[str, Any]:
             "analytics_summary": "/api/analytics/summary",
             "plume_model": "/api/plume/{fire_id}",
             "incident_report": "/api/incident/report/{fire_id}",
-            "data_health": "/api/data-health"
+            "data_health": "/api/data-health",
+            "classifier_info": "/api/classifier/info"
         }
+    }
+
+
+@app.on_event("startup")
+def startup_prewarm():
+    """Initializes and pre-warms the ML EventClassifier on server startup."""
+    try:
+        clf = get_event_classifier()
+        logger.info(f"EventClassifier pre-warmed: model_loaded={clf.is_loaded}")
+    except Exception as e:
+        logger.warning(f"EventClassifier pre-warm notice: {e}")
+
+
+@app.get("/api/classifier/info", tags=["Classification & AI"])
+def get_classifier_info() -> Dict[str, Any]:
+    """
+    Returns architecture, target classes, feature schema, and evaluation status
+    for the AGNIDRISHTI Tabular Random Forest Event Classifier.
+    """
+    clf = get_event_classifier()
+    if clf.evaluation_report is None:
+        X_seed, y_seed = generate_reference_baseline_dataset()
+        clf.evaluate(X_seed, y_seed)
+
+    return {
+        "model_type": "RandomForestClassifier",
+        "framework": "scikit-learn",
+        "classes": TARGET_CLASSES,
+        "feature_count": len(FEATURE_NAMES),
+        "features": FEATURE_NAMES,
+        "model_storage": clf.model_path,
+        "is_loaded": clf.is_loaded,
+        "uncertainty_handling": {
+            "threshold": 0.55,
+            "low_confidence_label": "LOW CONFIDENCE"
+        },
+        "dataset_audit": {
+            "dataset_status": "Evaluation dataset insufficient",
+            "note": "No ground-truth labeled historical dataset exists in repository. Trained on reference spatial-temporal baseline anchors. Production-level accuracy is not fabricated."
+        },
+        "evaluation_metrics": clf.evaluation_report
     }
 
 
@@ -106,6 +151,13 @@ def get_data_health() -> Dict[str, Any]:
 
     return {
         "status": "healthy" if meta.get("live_connection") else "degraded",
+        "firms_status": firms_status,
+        "last_successful_fetch": meta.get("last_firms_fetch_utc") or "None",
+        "latest_observation_time": meta.get("latest_observation_utc") or "None",
+        "received_at": meta.get("last_sync_utc") or meta.get("last_sync_full") or "None",
+        "event_count": firms_raw.get("count", 0),
+        "satellites": meta.get("active_satellites_list", []),
+        "cache_age": round(time.time() - firms_service._cache_time, 1) if firms_service._cache_time else 0.0,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "thermal_events": {
             "status": firms_status,
@@ -148,7 +200,13 @@ def get_data_health() -> Dict[str, Any]:
             "source": "ESA WorldCover Baseline / Spatial Rule Model",
             "provenance": "Land-Cover Context Spatial Rule Model"
         },
-        "event_persistence": store_health
+        "event_persistence": store_health,
+        "event_classifier": {
+            "status": "ONLINE" if get_event_classifier().is_loaded else "OFFLINE",
+            "model": "RandomForestClassifier",
+            "framework": "scikit-learn",
+            "classes": TARGET_CLASSES
+        }
     }
 
 
@@ -311,6 +369,35 @@ def get_plume_dispersion(fire_id: str) -> Dict[str, Any]:
     return plume_geojson
 
 
+@app.get("/api/satellite-evidence/{fire_id}", tags=["Satellite Intelligence"])
+def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
+    """
+    Returns authentic multi-sensor satellite evidence for the specified thermal event:
+    Primary VIIRS 375m detection corroborated by high-resolution optical (Landsat 8/9, Sentinel-2)
+    and historical thermal (MODIS Terra/Aqua) context.
+    """
+    ingestion = firms_service.fetch_firms_data()
+    all_fires = classify_fire_list(ingestion.get("data", []), filter_mode="all")
+
+    target_fire = next((f for f in all_fires if f.get("fire_id") == fire_id or f.get("event_id") == fire_id), None)
+    if not target_fire:
+        if fire_id.startswith("AGNI-DEMO-"):
+            target_fire = {
+                "fire_id": fire_id,
+                "latitude": 21.17,
+                "longitude": 72.83,
+                "frp": 142.5,
+                "confidence": "94%",
+                "acq_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "acq_time": "09:42",
+                "satellite": "VIIRS_NOAA21"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Fire incident with ID '{fire_id}' not found.")
+
+    return get_satellite_evidence_for_incident(target_fire)
+
+
 @app.get("/api/incident/report/{fire_id}", tags=["Incident Response Dossiers"])
 def get_incident_report(fire_id: str) -> Dict[str, Any]:
     """Generates official AGNIDRISHTI Incident Report & Sensitive Receptor Audit."""
@@ -403,11 +490,14 @@ def get_incident_report(fire_id: str) -> Dict[str, Any]:
         },
         "atmospheric_dispersion_assessment": {
             "hazard_tier": plume_props.get("hazard_tier"),
-            "downwind_trajectory_bearing": f"{plume_props.get('downwind_azimuth_deg')}°",
-            "wind_speed": f"{plume_props.get('wind_speed_kmh')} km/h",
+            "downwind_trajectory_bearing": f"{plume_props.get('downwind_azimuth_deg')}°" if plume_props.get('downwind_azimuth_deg') is not None else "Calm / Non-directional",
+            "wind_speed": f"{plume_props.get('wind_speed_kmh')} km/h ({plume_props.get('wind_speed_ms', round((plume_props.get('wind_speed_kmh') or 0)/3.6, 1))} m/s)",
+            "estimated_dispersion_extent": f"{plume_props.get('hazard_length_km')} km",
+            "potential_exposure_radius": f"{incident.get('hazard_radius_km', 2.0)} km",
             "toxic_plume_corridor_length": f"{plume_props.get('hazard_length_km')} km",
             "evacuation_zone_radius": f"{incident.get('hazard_radius_km', 2.0)} km",
             "public_warning_statement": plume_props.get("warning")
+
         },
         "community_exposure_assessment": {
             "risk_level": exposure["risk_level"],
@@ -422,6 +512,8 @@ def get_incident_report(fire_id: str) -> Dict[str, Any]:
             "recommended_action": exposure["recommended_action"]
         },
         "evidence_chain": incident.get("cause_analysis", {}).get("contributing_factors", []),
+        "event_assessment": incident.get("model_assessment", {}),
+        "model_assessment": incident.get("model_assessment", {}),
         "tactical_response_plan": {
             "standard_operating_procedure": incident.get("actionable_sop", "Standard operating procedure initiated."),
             "immediate_actions": [
@@ -432,3 +524,100 @@ def get_incident_report(fire_id: str) -> Dict[str, Any]:
         }
     }
     return report
+
+
+@app.get("/api/persistent-sources", tags=["Temporal Intelligence"])
+def get_persistent_sources() -> Dict[str, Any]:
+    """Retrieves all identified recurring and persistent thermal sources across India."""
+    ingestion = firms_service.fetch_firms_data()
+    raw_points = ingestion.get("data", [])
+    classified_points = classify_fire_list(raw_points, filter_mode="all")
+
+    sources = []
+    seen_source_ids = set()
+    for p in classified_points:
+        ps = p.get("persistent_source", {})
+        src_id = ps.get("persistent_source_id") or p.get("fire_id")
+        if src_id and src_id not in seen_source_ids:
+            seen_source_ids.add(src_id)
+            sources.append(ps)
+
+    return {
+        "status": "success",
+        "count": len(sources),
+        "sources": sources,
+        "persistent_count": sum(1 for s in sources if s.get("source_tier") == "PERSISTENT SOURCE"),
+        "recurrent_count": sum(1 for s in sources if s.get("source_tier") == "RECURRENT SOURCE")
+    }
+
+
+@app.get("/api/sources/{source_id}", tags=["Temporal Intelligence"])
+def get_source_detail(source_id: str) -> Dict[str, Any]:
+    """Retrieves granular persistent-source intelligence, recurrence metrics, and historical passes for a source."""
+    ingestion = firms_service.fetch_firms_data()
+    raw_points = ingestion.get("data", [])
+    classified_points = classify_fire_list(raw_points, filter_mode="all")
+
+    match = None
+    for p in classified_points:
+        ps = p.get("persistent_source", {})
+        if ps.get("persistent_source_id") == source_id or p.get("fire_id") == source_id or p.get("event_id") == source_id:
+            match = p
+            break
+
+    if not match:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Persistent source '{source_id}' not found in active surveillance dataset."
+        )
+
+    return {
+        "status": "success",
+        "persistent_source": match.get("persistent_source", {}),
+        "temporal_profile": match.get("temporal_profile", {}),
+        "history": match.get("history", []),
+        "fire": match
+    }
+
+
+@app.get("/api/satellite-evidence/{fire_id}", tags=["Satellite Intelligence"])
+def get_satellite_evidence(fire_id: str) -> Dict[str, Any]:
+    """
+    Retrieves supporting satellite observations (Landsat 8/9, Sentinel-2, MODIS)
+    for a given VIIRS primary detection event.
+    """
+    # Look up fire in active surveillance dataset
+    ingestion = firms_service.fetch_firms_data()
+    raw_points = ingestion.get("data", [])
+    classified_points = classify_fire_list(raw_points, filter_mode="all")
+
+    matched_fire = None
+    for p in classified_points:
+        if p.get("fire_id") == fire_id or p.get("event_id") == fire_id:
+            matched_fire = p
+            break
+
+    # If not found in live feed, handle demo event or fallback fire object
+    if not matched_fire:
+        if fire_id.startswith("AGNI-DEMO-"):
+            matched_fire = {
+                "fire_id": fire_id,
+                "event_id": fire_id,
+                "latitude": 21.1702,
+                "longitude": 72.8311,
+                "frp": 142.5,
+                "satellite": "VIIRS_NOAA21",
+                "confidence": "HIGH",
+                "is_emergency": True
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Thermal detection '{fire_id}' not found in active surveillance dataset."
+            )
+
+    evidence = get_satellite_evidence_for_incident(matched_fire)
+    response = dict(evidence)
+    response["status"] = "success"
+    return response
+

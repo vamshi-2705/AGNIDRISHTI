@@ -53,7 +53,8 @@ export default function OperationsSidebar({
   selectedFire,
   onSelectFire,
   isLive,
-  loading
+  loading,
+  is3DActive = false
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('frp'); // 'frp' | 'threat'
@@ -102,15 +103,15 @@ export default function OperationsSidebar({
   const emergencyCount = criticalInboxEvents.length;
 
   return (
-    <aside className="absolute top-3 left-3 bottom-3 w-[335px] max-h-[calc(100vh-5.5rem)] rounded-xl shadow-2xl z-[1000] flex flex-col font-sans select-none overflow-hidden glass-panel text-slate-100">
+    <aside className={`absolute top-3 left-3 bottom-3 ${is3DActive ? 'w-[270px]' : 'w-[335px]'} max-h-[calc(100vh-5.5rem)] rounded-xl shadow-2xl z-[1000] flex flex-col font-sans select-none overflow-hidden glass-panel text-slate-100 transition-all duration-150`}>
       {/* 1. Dedicated Critical Events Inbox Header */}
       {criticalInboxEvents.length > 0 && (
-        <div className="p-2.5 bg-red-950/40 border-b border-red-500/20 shrink-0">
+        <div className={`${is3DActive ? 'p-2' : 'p-2.5'} bg-red-950/40 border-b border-red-500/20 shrink-0`}>
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-              <span className="text-[10.5px] font-mono font-bold tracking-wider text-red-300 uppercase">
-                CRITICAL ANOMALY INBOX ({criticalInboxEvents.length})
+              <span className={`${is3DActive ? 'text-[9.5px]' : 'text-[10.5px]'} font-mono font-bold tracking-wider text-red-300 uppercase`}>
+                CRITICAL INBOX ({criticalInboxEvents.length})
               </span>
             </div>
             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-red-900/60 text-red-200 border border-red-700/40">
@@ -118,7 +119,7 @@ export default function OperationsSidebar({
             </span>
           </div>
 
-          <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+          <div className={`space-y-1.5 ${is3DActive ? 'max-h-[100px]' : 'max-h-[140px]'} overflow-y-auto pr-1`}>
             {criticalInboxEvents.map((item, idx) => {
               const isSelected = selectedFire?.fire_id === item.fire_id;
               const expRisk = item.exposure_risk_level || (item.community_exposure?.risk_level) || 'HIGH';
@@ -280,50 +281,50 @@ export default function OperationsSidebar({
                 <div
                   key={`${fire.fire_id || fire.event_id || 'fire'}-${idx}`}
                   onClick={() => onSelectFire(fire)}
-                  className={`p-3 rounded-lg cursor-pointer incident-card-translucent ${
+                  className={`${is3DActive ? 'p-2' : 'p-3'} rounded-lg cursor-pointer incident-card-translucent ${
                     isSelected ? 'is-selected' : ''
                   } ${isEmergency ? 'is-critical' : ''}`}
                 >
                   {/* 1. Location & Event ID */}
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="text-[12px] font-bold text-slate-100 tracking-wide leading-tight truncate">
+                  <div className="flex items-start justify-between gap-1.5 mb-1">
+                    <div className={`${is3DActive ? 'text-[11px]' : 'text-[12px]'} font-bold text-slate-100 tracking-wide leading-tight truncate`}>
                       {locationLabel}
                     </div>
-                    <span className="font-mono text-[10px] text-slate-400 shrink-0 font-medium">
+                    <span className="font-mono text-[9.5px] text-slate-400 shrink-0 font-medium">
                       {fire.event_id || fire.fire_id}
                     </span>
                   </div>
 
                   {/* 2. Classification & Provenance Tag */}
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-[11px] font-medium text-slate-300 tracking-wide truncate">
+                  <div className="flex items-center justify-between gap-1 mb-1.5">
+                    <span className={`${is3DActive ? 'text-[10px]' : 'text-[11px]'} font-medium text-slate-300 tracking-wide truncate`}>
                       {classificationLabel}
                     </span>
-                    <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08] shrink-0">
+                    <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-white/[0.05] text-slate-300 border border-white/[0.08] shrink-0">
                       {satDisplay}
                     </span>
                   </div>
 
                   {/* 3. FRP, Baseline Ratio, Passes & Trend */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.04] text-[10.5px] font-mono">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className={`font-bold text-[12px] ${frpColorClass}`}>
+                  <div className={`flex items-center justify-between pt-1.5 border-t border-white/[0.04] ${is3DActive ? 'text-[9.5px]' : 'text-[10.5px]'} font-mono`}>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`font-bold ${is3DActive ? 'text-[11px]' : 'text-[12px]'} ${frpColorClass}`}>
                         {fire.frp} MW
                       </span>
-                      <span className="text-slate-400 text-[10px]">
+                      <span className="text-slate-400 text-[9.5px]">
                         • {fire.anomaly_ratio ? `${fire.anomaly_ratio}×` : '1.0×'}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-slate-400 text-[10px] shrink-0">
+                    <div className="flex items-center gap-1 text-slate-400 text-[9.5px] shrink-0">
                       {fire.trend_direction === 'up' ? (
-                        <TrendingUp className="w-3 h-3 text-red-400" />
+                        <TrendingUp className="w-2.5 h-2.5 text-red-400" />
                       ) : fire.trend_direction === 'down' ? (
-                        <TrendingDown className="w-3 h-3 text-emerald-400" />
+                        <TrendingDown className="w-2.5 h-2.5 text-emerald-400" />
                       ) : (
-                        <Minus className="w-3 h-3 text-slate-500" />
+                        <Minus className="w-2.5 h-2.5 text-slate-500" />
                       )}
-                      <span>{obsCount} passes</span>
+                      <span>{obsCount}p</span>
                       <span className="text-slate-600">•</span>
                       <span>{timeLabel}</span>
                     </div>

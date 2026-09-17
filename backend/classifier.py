@@ -14,6 +14,7 @@ from geocoding_service import reverse_geocode
 from persistence_service import persistence_engine
 from community_exposure import evaluate_community_exposure
 from plume_service import calculate_plume_cone, fetch_live_wind
+from ml_classifier import get_event_classifier
 
 # Known coal mining geographic zones (e.g., Jharia, Raniganj, Singrauli, Korba)
 COAL_BELT_BOUNDS = [
@@ -42,11 +43,15 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
     Evaluates a raw thermal point from NASA FIRMS through the multi-tier classification logic.
     Enriches with exact location (District, State) and AI Root-Cause Attribution with certainty %.
     """
-    lat = float(point.get("latitude", 0.0))
-    lon = float(point.get("longitude", 0.0))
-    frp = float(point.get("frp", 0.0))
-    brightness = float(point.get("brightness", 300.0))
-    fire_id = point.get("fire_id", "UNKNOWN-FIRE")
+    lat_raw = point.get("latitude")
+    lon_raw = point.get("longitude")
+    lat = float(lat_raw) if lat_raw is not None else 0.0
+    lon = float(lon_raw) if lon_raw is not None else 0.0
+    frp_raw = point.get("frp")
+    frp = float(frp_raw) if (frp_raw is not None and frp_raw != "") else 0.0
+    bright_raw = point.get("brightness")
+    brightness = float(bright_raw) if (bright_raw is not None and bright_raw != "") else 300.0
+    fire_id = point.get("fire_id") or point.get("event_id") or "UNKNOWN-FIRE"
 
     # Step 1: Exact Reverse-Geocoding
     geo = reverse_geocode(lat, lon)
@@ -74,7 +79,7 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
     if facility:
         baseline = facility["baseline_frp_mw"]
         max_normal = facility["max_normal_frp_mw"]
-        anomaly_ratio = round(frp / baseline, 2) if baseline > 0 else 1.0
+        anomaly_ratio = round(frp / baseline, 2) if (baseline > 0 and frp > 0) else 1.0
 
         # Scenario A: Critical Industrial Emergency
         if frp > max_normal or anomaly_ratio >= 2.2:
@@ -259,7 +264,7 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
                 "facility_id": "MINING-COAL-FIELD",
                 "facility_name": f"{coal['name']} Perimeter",
                 "baseline_frp_mw": 50.0,
-                "anomaly_ratio": round(frp / 50.0, 2),
+                "anomaly_ratio": round(frp / 50.0, 2) if (frp is not None and frp > 0) else 1.0,
                 "critical_chemicals": ["Carbon Monoxide", "Sulfur Dioxide", "Coal Particulates"],
                 "hazard_radius_km": 2.5,
                 "location": {
@@ -306,7 +311,7 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
             "facility_id": None,
             "facility_name": f"Agricultural Farmland, {geo['district']}",
             "baseline_frp_mw": 15.0,
-            "anomaly_ratio": round(frp / 15.0, 2),
+            "anomaly_ratio": round(frp / 15.0, 2) if (frp is not None and frp > 0) else 1.0,
             "persistence_score": temporal["persistence_score"],
             "temporal_profile": temporal,
             "critical_chemicals": ["PM2.5", "PM10", "Carbon Dioxide", "Organic Carbon"],
@@ -357,7 +362,7 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
                 "facility_id": None,
                 "facility_name": forest["name"],
                 "baseline_frp_mw": 35.0,
-                "anomaly_ratio": round(frp / 35.0, 2),
+                "anomaly_ratio": round(frp / 35.0, 2) if (frp is not None and frp > 0) else 1.0,
                 "persistence_score": temporal["persistence_score"],
                 "temporal_profile": temporal,
                 "critical_chemicals": ["Wood Smoke", "Carbon Monoxide", "Ash Particulates"],
@@ -406,7 +411,8 @@ def _raw_classify_thermal_point(point: Dict[str, Any]) -> Dict[str, Any]:
         "facility_id": None,
         "facility_name": f"Rural Sector, {geo['district']}",
         "baseline_frp_mw": 20.0,
-        "anomaly_ratio": 1.0,
+        # Mathematically consistent formula: anomaly_ratio = round(observed_frp / baseline_frp, 2)
+        "anomaly_ratio": round(frp / 20.0, 2) if (frp is not None and frp > 0) else 1.0,
         "persistence_score": temporal["persistence_score"],
         "temporal_profile": temporal,
         "critical_chemicals": ["Particulate Matter", "Carbon Monoxide"],
@@ -448,7 +454,8 @@ def classify_thermal_point(point: Dict[str, Any], allow_live_network: bool = Fal
     classified = _raw_classify_thermal_point(point)
     lat = float(classified.get("latitude", 0.0))
     lon = float(classified.get("longitude", 0.0))
-    frp = float(classified.get("frp", 20.0))
+    frp_val = classified.get("frp")
+    frp = float(frp_val) if frp_val is not None else 20.0
     cat = classified.get("category", "CRITICAL_INDUSTRIAL_EMERGENCY")
     anomaly_ratio = float(classified.get("anomaly_ratio", 1.0))
     is_emergency = bool(classified.get("is_emergency", False))
@@ -504,6 +511,39 @@ def classify_thermal_point(point: Dict[str, Any], allow_live_network: bool = Fal
 
     classified["community_exposure"] = exposure
     classified["exposure_risk_level"] = exposure.get("risk_level", "LOW")
+
+    # Priority 2: Persistent Source & Temporal Intelligence Record
+    temporal = classified.get("temporal_profile", {})
+    if "persistent_source" in temporal:
+        classified["persistent_source"] = temporal["persistent_source"]
+        classified["source_tier"] = temporal.get("source_tier", "INSUFFICIENT HISTORY")
+    else:
+        classified["persistent_source"] = {}
+        classified["source_tier"] = "INSUFFICIENT HISTORY"
+
+    # Priority 3: Real Event Classification Layer (Random Forest Tabular Model)
+    try:
+        classifier_engine = get_event_classifier()
+        ml_res = classifier_engine.assess_event(classified)
+        classified["predicted_class"] = ml_res["predicted_class"]
+        classified["model_confidence"] = ml_res["model_confidence"]
+        classified["supporting_features"] = ml_res["supporting_features"]
+        classified["model_assessment"] = ml_res
+    except Exception as e:
+        classified["predicted_class"] = "UNKNOWN"
+        classified["model_confidence"] = 0
+        classified["supporting_features"] = {}
+        classified["model_assessment"] = {
+            "predicted_class": "UNKNOWN",
+            "class_display": "UNCLASSIFIED",
+            "likely_class": "UNCLASSIFIED",
+            "model_confidence": 0,
+            "is_low_confidence": True,
+            "confidence_display": "LOW CONFIDENCE",
+            "supporting_evidence": ["Insufficient feature data for classification"],
+            "supporting_features": {}
+        }
+
     return classified
 
 

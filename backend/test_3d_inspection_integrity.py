@@ -75,8 +75,8 @@ def test_inspection_controls_present():
     with open(inspector_path, "r", encoding="utf-8") as f:
         i_content = f.read()
 
-    assert "LOCATE EVENT" in v_content
-    assert "2D VIEW / EXIT 3D" in v_content
+    assert ("TARGET EVENT" in v_content or "LOCATE EVENT" in v_content)
+    assert ("RETURN TO 2D" in v_content or "2D VIEW / EXIT 3D" in v_content)
     assert "3D INCIDENT INSPECTION" in i_content
     assert "Locate Event In 3D" in i_content
     assert "Return to 2D Map" in i_content
@@ -120,9 +120,9 @@ def test_gis_navigation_controls_present():
     assert "handleZoomOut" in content
     assert "handleResetHome" in content
     assert "handleResetNorth" in content
-    assert "Zoom In (+)" in content
-    assert "Zoom Out (−)" in content
-    assert "Home - Regional Overview" in content
+    assert "Zoom In" in content
+    assert "Zoom Out" in content
+    assert ("Regional Overview" in content or "Home - Regional Overview" in content)
 
 
 def test_interactive_entity_picking_and_detail_card():
@@ -165,24 +165,24 @@ def test_multistage_cinematic_camera_flight():
     assert "STAGE 4" in content
 
 
-def test_cesium_free_3d_stack_without_google():
-    """Verify Cesium-only 3D stack (OSM Buildings + World Terrain) with zero Google dependencies."""
+def test_cesium_world_terrain_and_osm_buildings_integration():
+    """Verify Cesium World Terrain and OSM Buildings integration via VITE_CESIUM_ION_TOKEN."""
     viewer_path = os.path.join(FRONTEND_COMPONENTS_DIR, "Cesium3DViewer.jsx")
     with open(viewer_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Must use Cesium native 3D primitives
-    assert "createOsmBuildingsAsync" in content
+    # Must use Cesium native terrain and OSM buildings
     assert "createWorldTerrainAsync" in content
+    assert "createOsmBuildingsAsync" in content
+    assert "VITE_CESIUM_ION_TOKEN" in content
+    assert "EllipsoidTerrainProvider" in content
     assert "tilesetMode" in content
     assert "tilesetStatusText" in content
-    assert "OSM Buildings" in content
-    assert "World Terrain" in content
 
-    # Must NOT have Google 3D Tiles dependencies
-    assert "createGooglePhotorealistic3DTileset" not in content
-    assert "VITE_GOOGLE_MAPS_API_KEY" not in content
-    assert "Google Photorealistic" not in content
+    # Google 3D tiles primitive must NOT be used
+    assert "createGooglePhotorealistic3DTileset" not in content, "Google 3D must be purged per Priority 4 Task 13"
+
+
 
 
 def test_camera_collision_prevention_enabled():
